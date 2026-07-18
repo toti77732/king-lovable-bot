@@ -2,11 +2,12 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 const MASTER_KEY = 'KING-LOVABLE-2024-SECRET';
 const KEYS_FILE = path.join(__dirname, 'keys.json');
 const ALLOWED_ROLE = 'REVENDEDOR';
+const LOGS_CHANNEL_ID = '1528140328727613633';
 
 const DURATION_LABELS = {
   '1m': '1 minuto', '5m': '5 minutos', '15m': '15 minutos', '30m': '30 minutos',
@@ -51,8 +52,29 @@ function generateKey(duration) {
   return 'KL-' + b1 + '-' + b2 + '-' + b3 + '-' + checksum;
 }
 
+function sendLog(client, revendedor, action, details) {
+  try {
+    const channel = client.channels.cache.get(LOGS_CHANNEL_ID);
+    if (!channel) return;
+    
+    const embed = new EmbedBuilder()
+      .setTitle('📋 ' + action)
+      .setColor('#ff3333')
+      .addFields(
+        { name: '👤 Revendedor', value: revendedor, inline: true },
+        { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true }
+      )
+      .setFooter({ text: 'King Lovable Logs' })
+      .setTimestamp();
+    
+    if (details) embed.setDescription(details);
+    channel.send({ embeds: [embed] });
+  } catch(e) { console.error('Erro ao enviar log:', e.message); }
+}
+
 client.once('ready', () => {
   console.log('🤖 Bot King Lovable online!');
+  console.log('📋 Canal de logs:', LOGS_CHANNEL_ID);
   
   client.application.commands.create({
     name: 'gerarkey',
@@ -77,14 +99,25 @@ client.once('ready', () => {
     name: 'keys',
     description: '📊 Ver estatísticas de keys'
   });
+  
+  client.application.commands.create({
+    name: 'relatorio',
+    description: '📋 Relatório de keys por revendedor',
+    options: [
+      { name: 'revendedor', description: 'Nome do revendedor (deixe vazio para todos)', type: 3, required: false }
+    ]
+  });
 });
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isCommand()) return;
   
   const member = interaction.member;
-  if (!member.roles.cache.some(role => role.name === ALLOWED_ROLE)) {
-    return interaction.reply({ content: '❌ Você não tem permissão! Cargo necessário: **' + ALLOWED_ROLE + '**', ephemeral: true });
+  const hasPermission = member.roles.cache.some(role => role.name === ALLOWED_ROLE) || 
+                        member.roles.cache.some(role => role.name === 'ADMIN');
+  
+  if (!hasPermission) {
+    return interaction.reply({ content: '❌ Você não tem permissão! Cargo necessário: **' + ALLOWED_ROLE + '** ou **ADMIN**', ephemeral: true });
   }
   
   if (interaction.commandName === 'gerarkey') {
@@ -99,12 +132,15 @@ client.on('interactionCreate', async (interaction) => {
     const keys = [];
     for (let i = 0; i < quantity; i++) {
       const key = generateKey(duration);
-      keys.push({ key, plan: 'premium', client: clientName, duration: DURATION_LABELS[duration], created: new Date().toISOString(), status: 'active' });
+      keys.push({ key, plan: 'premium', client: clientName, revendedor: interaction.user.tag, duration: DURATION_LABELS[duration], created: new Date().toISOString(), status: 'active' });
     }
     
     const allKeys = loadKeys();
     allKeys.unshift(...keys);
     saveKeys(allKeys);
+    
+    const logDetails = `**Quantidade:** ${quantity}\n**Duração:** ${DURATION_LABELS[duration]}\n**Cliente:** ${clientName}\n**Keys:**\n${keys.map(k => '`' + k.key + '`').join('\n')}`;
+    sendLog(client, interaction.user.tag, '🔑 Keys Geradas', logDetails);
     
     const embed = new EmbedBuilder()
       .setTitle('🔑 Key(s) Gerada(s)')
@@ -134,6 +170,41 @@ client.on('interactionCreate', async (interaction) => {
         { name: '🔴 Expiradas', value: String(expired), inline: true }
       )
       .setFooter({ text: 'King Lovable Bot' });
+    
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+  
+  if (interaction.commandName === 'relatorio') {
+    const revendedor = interaction.options.getString('revendedor');
+    let allKeys = loadKeys();
+    
+    if (revendedor) {
+      allKeys = allKeys.filter(k => k.revendedor && k.revendedor.toLowerCase().includes(revendedor.toLowerCase()));
+    }
+    
+    const porRevendedor = {};
+    allKeys.forEach(k => {
+      const rev = k.revendedor || 'Desconhecido';
+      if (!porRevendedor[rev]) porRevendedor[rev] = { total: 0, ativas: 0, expiradas: 0 };
+      porRevendedor[rev].total++;
+      if (k.status === 'active') porRevendedor[rev].ativas++;
+      else porRevendedor[rev].expiradas++;
+    });
+    
+    const embed = new EmbedBuilder()
+      .setTitle('📋 Relatório por Revendedor')
+      .setColor('#ffd700')
+      .setFooter({ text: 'King Lovable Bot' });
+    
+    if (Object.keys(porRevendedor).length === 0) {
+      embed.setDescription('Nenhuma key encontrada.');
+    } else {
+      let desc = '';
+      for (const [rev, stats] of Object.entries(porRevendedor)) {
+        desc += `**${rev}**\n📦 Total: ${stats.total} | 🟢 Ativas: ${stats.ativas} | 🔴 Expiradas: ${stats.expiradas}\n\n`;
+      }
+      embed.setDescription(desc);
+    }
     
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
