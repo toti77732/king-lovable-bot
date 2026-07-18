@@ -139,4 +139,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(MTUyODExNzQ5Mzg5MjEyNDg4Mw.G9RqGj.uUEeCELklLq-AB0IwI4d0_EVuywRqr34sKzxsc);
+client.login(MTUyODExNzQ5Mzg5MjEyNDg4Mw.G9g0N0.cTnn9WVW6Zwgaar2u2LK2pZTF3p6EaYwQPJbAo);
