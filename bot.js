@@ -51,24 +51,9 @@ function generateKey(duration) {
   return 'KL-' + b1 + '-' + b2 + '-' + b3 + '-' + checksum;
 }
 
-// Servidor HTTP para manter o Render ativo
-const http = require('http');
-const server = http.createServer((req, res) => {
-  if (req.url === '/status') {
-    const keys = loadKeys();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ online: true, keys: keys.length }));
-  } else {
-    res.writeHead(200);
-    res.end('King Lovable Bot Online');
-  }
-});
-server.listen(process.env.PORT || 3000);
-
 client.once('ready', () => {
   console.log('🤖 Bot King Lovable online!');
   
-  // Registrar comandos
   client.application.commands.create({
     name: 'gerarkey',
     description: '🔑 Gerar uma nova key',
@@ -154,5 +139,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Token
 client.login('MTUyODExNzQ5Mzg5MjEyNDg4Mw.Gy1TUk.J2ChFLNAW5AAE-qol5UjHuDX1VUviwwKt9rWN0');
