@@ -49,7 +49,8 @@ function generateKey(duration) {
 function sendLog(client, revendedor, action, details) {
   try {
     const channel = client.channels.cache.get(LOGS_CHANNEL_ID);
-    if (!channel) return;
+    if (!channel) { console.log('❌ Canal de logs não encontrado! ID:', LOGS_CHANNEL_ID); return; }
+    console.log('📋 Enviando log para:', channel.name);
     const embed = new EmbedBuilder().setTitle('📋 ' + action).setColor('#ff3333')
       .addFields({ name: '👤 Responsável', value: revendedor, inline: true }, { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true })
       .setFooter({ text: 'King Lovable Logs' }).setTimestamp();
@@ -62,47 +63,61 @@ function isStaff(member) { return member.roles.cache.some(r => r.name === STAFF_
 function isRevendedor(member) { return member.roles.cache.some(r => r.name === ALLOWED_ROLE); }
 function hasPermission(member) { return isStaff(member) || isRevendedor(member); }
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log('🤖 Bot King Lovable online!');
+  console.log('📋 Canal de logs configurado:', LOGS_CHANNEL_ID);
   
-  const commands = [
-    { name: 'gerarkey', description: '🔑 Gerar uma nova key', options: [
-      { name: 'duracao', description: 'Duração da key', type: 3, required: true, choices: [
-        { name: '1 minuto', value: '1m' },{ name: '5 minutos', value: '5m' },{ name: '15 minutos', value: '15m' },{ name: '30 minutos', value: '30m' },
-        { name: '1 hora', value: '1h' },{ name: '6 horas', value: '6h' },{ name: '12 horas', value: '12h' },
-        { name: '1 dia', value: '1d' },{ name: '3 dias', value: '3d' },{ name: '7 dias', value: '7d' },{ name: '15 dias', value: '15d' },
-        { name: '30 dias', value: '30d' },{ name: '90 dias', value: '90d' },{ name: '180 dias', value: '180d' },{ name: '1 ano', value: '365d' },
-        { name: 'Vitalício', value: 'vitalicio' }
+  // Verificar se o canal de logs existe
+  const logChannel = client.channels.cache.get(LOGS_CHANNEL_ID);
+  if (logChannel) {
+    console.log('✅ Canal de logs encontrado:', logChannel.name);
+  } else {
+    console.log('❌ Canal de logs NÃO encontrado! Verifique o ID.');
+  }
+  
+  // Registrar comandos no servidor específico
+  const guild = client.guilds.cache.get('1528118685720383790');
+  if (guild) {
+    await guild.commands.set([
+      { name: 'gerarkey', description: '🔑 Gerar uma nova key', options: [
+        { name: 'duracao', description: 'Duração da key', type: 3, required: true, choices: [
+          { name: '1 minuto', value: '1m' },{ name: '5 minutos', value: '5m' },{ name: '15 minutos', value: '15m' },{ name: '30 minutos', value: '30m' },
+          { name: '1 hora', value: '1h' },{ name: '6 horas', value: '6h' },{ name: '12 horas', value: '12h' },
+          { name: '1 dia', value: '1d' },{ name: '3 dias', value: '3d' },{ name: '7 dias', value: '7d' },{ name: '15 dias', value: '15d' },
+          { name: '30 dias', value: '30d' },{ name: '90 dias', value: '90d' },{ name: '180 dias', value: '180d' },{ name: '1 ano', value: '365d' },
+          { name: 'Vitalício', value: 'vitalicio' }
+        ]},
+        { name: 'quantidade', description: 'Quantidade de keys (1-10)', type: 4, required: false },
+        { name: 'cliente', description: 'Nome do cliente', type: 3, required: false }
       ]},
-      { name: 'quantidade', description: 'Quantidade de keys (1-10)', type: 4, required: false },
-      { name: 'cliente', description: 'Nome do cliente', type: 3, required: false }
-    ]},
-    { name: 'keys', description: '📊 Ver estatísticas de keys' },
-    { name: 'relatorio', description: '📋 Relatório de keys por revendedor', options: [
-      { name: 'revendedor', description: 'Nome do revendedor', type: 3, required: false }
-    ]},
-    { name: 'deletarkey', description: '🗑️ Apagar uma key (Staff)', options: [
-      { name: 'key', description: 'Key a ser apagada', type: 3, required: true }
-    ]},
-    { name: 'ban', description: '🚫 Banir revendedor (Staff)', options: [
-      { name: 'usuario', description: 'Nome do revendedor', type: 3, required: true }
-    ]},
-    { name: 'unban', description: '✅ Desbanir revendedor (Staff)', options: [
-      { name: 'usuario', description: 'Nome do revendedor', type: 3, required: true }
-    ]},
-    { name: 'keyscliente', description: '🔍 Buscar keys por cliente (Staff)', options: [
-      { name: 'cliente', description: 'Nome do cliente', type: 3, required: true }
-    ]},
-    { name: 'expirarkey', description: '⏰ Forçar expiração de key (Staff)', options: [
-      { name: 'key', description: 'Key a ser expirada', type: 3, required: true }
-    ]},
-    { name: 'statuskey', description: '🔍 Ver detalhes de uma key (Staff)', options: [
-      { name: 'key', description: 'Key a ser verificada', type: 3, required: true }
-    ]},
-    { name: 'limparlogs', description: '🧹 Limpar keys expiradas (Staff)' }
-  ];
-  
-  commands.forEach(cmd => client.application.commands.create(cmd));
+      { name: 'keys', description: '📊 Ver estatísticas de keys' },
+      { name: 'relatorio', description: '📋 Relatório de keys por revendedor', options: [
+        { name: 'revendedor', description: 'Nome do revendedor', type: 3, required: false }
+      ]},
+      { name: 'deletarkey', description: '🗑️ Apagar uma key (Staff)', options: [
+        { name: 'key', description: 'Key a ser apagada', type: 3, required: true }
+      ]},
+      { name: 'ban', description: '🚫 Banir revendedor (Staff)', options: [
+        { name: 'usuario', description: 'Nome do revendedor', type: 3, required: true }
+      ]},
+      { name: 'unban', description: '✅ Desbanir revendedor (Staff)', options: [
+        { name: 'usuario', description: 'Nome do revendedor', type: 3, required: true }
+      ]},
+      { name: 'keyscliente', description: '🔍 Buscar keys por cliente (Staff)', options: [
+        { name: 'cliente', description: 'Nome do cliente', type: 3, required: true }
+      ]},
+      { name: 'expirarkey', description: '⏰ Forçar expiração de key (Staff)', options: [
+        { name: 'key', description: 'Key a ser expirada', type: 3, required: true }
+      ]},
+      { name: 'statuskey', description: '🔍 Ver detalhes de uma key (Staff)', options: [
+        { name: 'key', description: 'Key a ser verificada', type: 3, required: true }
+      ]},
+      { name: 'limparlogs', description: '🧹 Limpar keys expiradas (Staff)' }
+    ]);
+    console.log('✅ Comandos registrados no servidor!');
+  } else {
+    console.log('❌ Servidor não encontrado!');
+  }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -116,11 +131,12 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ content: '🚫 Você está banido do sistema!', ephemeral: true });
   }
   
-  const publicCommands = ['gerarkey', 'keys'];
-  if (!publicCommands.includes(interaction.commandName) && !isStaff(member)) {
+  const staffCommands = ['relatorio', 'deletarkey', 'ban', 'unban', 'keyscliente', 'expirarkey', 'statuskey', 'limparlogs'];
+  if (staffCommands.includes(interaction.commandName) && !isStaff(member)) {
     return interaction.reply({ content: '❌ Apenas **🛡️Staff** pode usar este comando!', ephemeral: true });
   }
   
+  const publicCommands = ['gerarkey', 'keys'];
   if (publicCommands.includes(interaction.commandName) && !hasPermission(member)) {
     return interaction.reply({ content: '❌ Você não tem permissão!', ephemeral: true });
   }
