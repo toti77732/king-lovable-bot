@@ -2,13 +2,15 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers] });
 
 const MASTER_KEY = 'KING-LOVABLE-2024-SECRET';
 const KEYS_FILE = path.join(__dirname, 'keys.json');
 const BANNED_FILE = path.join(__dirname, 'banned.json');
 const ALLOWED_ROLE = 'REVENDEDOR';
 const STAFF_ROLE = '🛡️Staff';
+const MEMBER_ROLE = '💙​membros';
+const WELCOME_CHANNEL_ID = '1528137128649687120';
 const LOGS_CHANNEL_ID = '1528140183361294398';
 
 const DURATION_LABELS = {
@@ -49,8 +51,7 @@ function generateKey(duration) {
 function sendLog(client, revendedor, action, details) {
   try {
     const channel = client.channels.cache.get(LOGS_CHANNEL_ID);
-    if (!channel) { console.log('❌ Canal de logs não encontrado! ID:', LOGS_CHANNEL_ID); return; }
-    console.log('📋 Enviando log para:', channel.name);
+    if (!channel) return;
     const embed = new EmbedBuilder().setTitle('📋 ' + action).setColor('#ff3333')
       .addFields({ name: '👤 Responsável', value: revendedor, inline: true }, { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true })
       .setFooter({ text: 'King Lovable Logs' }).setTimestamp();
@@ -63,19 +64,38 @@ function isStaff(member) { return member.roles.cache.some(r => r.name === STAFF_
 function isRevendedor(member) { return member.roles.cache.some(r => r.name === ALLOWED_ROLE); }
 function hasPermission(member) { return isStaff(member) || isRevendedor(member); }
 
+// ============================================
+// BOAS-VINDAS + CARGO AUTOMÁTICO
+// ============================================
+client.on('guildMemberAdd', async (member) => {
+  try {
+    // Dar cargo de membro
+    const role = member.guild.roles.cache.find(r => r.name === MEMBER_ROLE);
+    if (role) {
+      await member.roles.add(role);
+    }
+    
+    // Mensagem de boas-vindas
+    const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (channel) {
+      const embed = new EmbedBuilder()
+        .setTitle('👋 Bem-vindo(a)!')
+        .setDescription(`Seja bem-vindo(a) ao servidor, ${member}! 🎉\n\nLeia as regras e aproveite!`)
+        .setColor('#ffd700')
+        .setThumbnail(member.user.displayAvatarURL())
+        .addFields(
+          { name: '👤 Usuário', value: member.user.tag, inline: true },
+          { name: '📅 Entrou em', value: new Date().toLocaleString('pt-BR'), inline: true }
+        )
+        .setFooter({ text: 'King Lovable' });
+      channel.send({ embeds: [embed] });
+    }
+  } catch(e) { console.error('Erro na boas-vindas:', e.message); }
+});
+
 client.once('ready', async () => {
   console.log('🤖 Bot King Lovable online!');
-  console.log('📋 Canal de logs configurado:', LOGS_CHANNEL_ID);
   
-  // Verificar se o canal de logs existe
-  const logChannel = client.channels.cache.get(LOGS_CHANNEL_ID);
-  if (logChannel) {
-    console.log('✅ Canal de logs encontrado:', logChannel.name);
-  } else {
-    console.log('❌ Canal de logs NÃO encontrado! Verifique o ID.');
-  }
-  
-  // Registrar comandos no servidor específico
   const guild = client.guilds.cache.get('1528118685720383790');
   if (guild) {
     await guild.commands.set([
@@ -114,9 +134,7 @@ client.once('ready', async () => {
       ]},
       { name: 'limparlogs', description: '🧹 Limpar keys expiradas (Staff)' }
     ]);
-    console.log('✅ Comandos registrados no servidor!');
-  } else {
-    console.log('❌ Servidor não encontrado!');
+    console.log('✅ Comandos registrados!');
   }
 });
 
@@ -193,36 +211,36 @@ client.on('interactionCreate', async (interaction) => {
     allKeys = allKeys.filter(k => k.key !== key);
     saveKeys(allKeys);
     sendLog(client, userTag, '🗑️ Key Apagada', `**Key:** \`${key}\`\n**Cliente:** ${found.client}\n**Revendedor:** ${found.revendedor}`);
-    await interaction.reply({ content: '✅ Key apagada com sucesso!', ephemeral: true });
+    await interaction.reply({ content: '✅ Key apagada!', ephemeral: true });
   }
   
   if (cmd === 'ban') {
     const usuario = interaction.options.getString('usuario');
     let banned = loadBanned();
-    if (banned.includes(usuario)) return interaction.reply({ content: '❌ Usuário já está banido!', ephemeral: true });
+    if (banned.includes(usuario)) return interaction.reply({ content: '❌ Já está banido!', ephemeral: true });
     banned.push(usuario);
     saveBanned(banned);
-    sendLog(client, userTag, '🚫 Revendedor Banido', `**Usuário:** ${usuario}`);
+    sendLog(client, userTag, '🚫 Banido', `**Usuário:** ${usuario}`);
     await interaction.reply({ content: '🚫 ' + usuario + ' banido!', ephemeral: true });
   }
   
   if (cmd === 'unban') {
     const usuario = interaction.options.getString('usuario');
     let banned = loadBanned();
-    if (!banned.includes(usuario)) return interaction.reply({ content: '❌ Usuário não está banido!', ephemeral: true });
+    if (!banned.includes(usuario)) return interaction.reply({ content: '❌ Não está banido!', ephemeral: true });
     banned = banned.filter(u => u !== usuario);
     saveBanned(banned);
-    sendLog(client, userTag, '✅ Revendedor Desbanido', `**Usuário:** ${usuario}`);
+    sendLog(client, userTag, '✅ Desbanido', `**Usuário:** ${usuario}`);
     await interaction.reply({ content: '✅ ' + usuario + ' desbanido!', ephemeral: true });
   }
   
   if (cmd === 'keyscliente') {
     const cliente = interaction.options.getString('cliente').toLowerCase();
     let allKeys = loadKeys().filter(k => k.client && k.client.toLowerCase().includes(cliente));
-    if (allKeys.length === 0) return interaction.reply({ content: '❌ Nenhuma key encontrada!', ephemeral: true });
-    const embed = new EmbedBuilder().setTitle('🔍 Keys do cliente: ' + cliente).setColor('#ffd700')
-      .setDescription(allKeys.slice(0, 20).map(k => `\`${k.key}\` - ${k.duration} - ${k.status === 'active' ? '🟢' : '🔴'} - ${k.revendedor || 'N/A'}`).join('\n'))
-      .setFooter({ text: `Total: ${allKeys.length} keys` });
+    if (allKeys.length === 0) return interaction.reply({ content: '❌ Nenhuma key!', ephemeral: true });
+    const embed = new EmbedBuilder().setTitle('🔍 Keys: ' + cliente).setColor('#ffd700')
+      .setDescription(allKeys.slice(0, 20).map(k => `\`${k.key}\` - ${k.duration} - ${k.status === 'active' ? '🟢' : '🔴'}`).join('\n'))
+      .setFooter({ text: `Total: ${allKeys.length}` });
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
@@ -231,11 +249,10 @@ client.on('interactionCreate', async (interaction) => {
     let allKeys = loadKeys();
     const found = allKeys.find(k => k.key === key);
     if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
-    if (found.status === 'expired') return interaction.reply({ content: '❌ Key já está expirada!', ephemeral: true });
     found.status = 'expired';
     saveKeys(allKeys);
-    sendLog(client, userTag, '⏰ Key Expirada', `**Key:** \`${key}\`\n**Cliente:** ${found.client}\n**Revendedor:** ${found.revendedor}`);
-    await interaction.reply({ content: '✅ Key expirada com sucesso!', ephemeral: true });
+    sendLog(client, userTag, '⏰ Key Expirada', `**Key:** \`${key}\``);
+    await interaction.reply({ content: '✅ Key expirada!', ephemeral: true });
   }
   
   if (cmd === 'statuskey') {
@@ -243,14 +260,13 @@ client.on('interactionCreate', async (interaction) => {
     let allKeys = loadKeys();
     const found = allKeys.find(k => k.key === key);
     if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
-    const embed = new EmbedBuilder().setTitle('🔍 Status da Key').setColor(found.status === 'active' ? '#51cf66' : '#ff3333')
+    const embed = new EmbedBuilder().setTitle('🔍 Status').setColor(found.status === 'active' ? '#51cf66' : '#ff3333')
       .addFields(
         { name: '🔑 Key', value: '`' + found.key + '`' },
         { name: '📊 Status', value: found.status === 'active' ? '🟢 Ativa' : '🔴 Expirada' },
         { name: '📅 Duração', value: found.duration || 'N/A', inline: true },
         { name: '👤 Cliente', value: found.client || 'N/A', inline: true },
-        { name: '🛡️ Revendedor', value: found.revendedor || 'N/A', inline: true },
-        { name: '📆 Criada em', value: new Date(found.created).toLocaleString('pt-BR') }
+        { name: '🛡️ Revendedor', value: found.revendedor || 'N/A', inline: true }
       );
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
@@ -260,8 +276,8 @@ client.on('interactionCreate', async (interaction) => {
     const expired = allKeys.filter(k => k.status === 'expired');
     allKeys = allKeys.filter(k => k.status !== 'expired');
     saveKeys(allKeys);
-    sendLog(client, userTag, '🧹 Limpeza', `**${expired.length}** keys expiradas removidas.`);
-    await interaction.reply({ content: `✅ ${expired.length} keys expiradas removidas!`, ephemeral: true });
+    sendLog(client, userTag, '🧹 Limpeza', `**${expired.length}** keys removidas.`);
+    await interaction.reply({ content: `✅ ${expired.length} keys removidas!`, ephemeral: true });
   }
 });
 
