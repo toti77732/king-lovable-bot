@@ -13,7 +13,7 @@ const MEMBER_ROLE = '💙​membros';
 const WELCOME_CHANNEL_ID = '1528137128649687120';
 const LOGS_CHANNEL_ID = '1528140183361294398';
 const TICKET_CHANNEL_ID = '1528138255122567208';
-const TICKET_CATEGORY_ID = '1528138255122567208'; // ⚠️ TROCAR PELO ID DA CATEGORIA DE TICKETS
+const TICKET_CATEGORY_ID = '1528138159559540887';
 
 const DURATION_LABELS = {
   '1m': '1 minuto', '5m': '5 minutos', '15m': '15 minutos', '30m': '30 minutos',
@@ -124,23 +124,18 @@ client.on('ready', async () => {
   }
 });
 
-// Interações (botões + comandos)
+// Interações
 client.on('interactionCreate', async (interaction) => {
-  // ============================================
-  // BOTÃO: ABRIR TICKET
-  // ============================================
   if (interaction.isButton() && interaction.customId === 'open_ticket') {
     const user = interaction.user;
     const guild = interaction.guild;
     
-    // Verificar se já tem ticket aberto
     const existing = guild.channels.cache.find(c => c.name === `ticket-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`);
     if (existing) {
       return interaction.reply({ content: '❌ Você já tem um ticket aberto! <#' + existing.id + '>', ephemeral: true });
     }
     
     try {
-      // Criar canal privado
       const ticketChannel = await guild.channels.create({
         name: `ticket-${user.username}`,
         type: ChannelType.GuildText,
@@ -152,63 +147,32 @@ client.on('interactionCreate', async (interaction) => {
         ]
       });
       
-      // Adicionar staff
       const staffRole = guild.roles.cache.find(r => r.name === STAFF_ROLE);
-      if (staffRole) {
-        await ticketChannel.permissionOverwrites.create(staffRole, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
-      }
+      if (staffRole) await ticketChannel.permissionOverwrites.create(staffRole, { ViewChannel: true, SendMessages: true });
       
-      const embed = new EmbedBuilder()
-        .setTitle('🎫 Ticket de Atendimento')
-        .setDescription(`Olá ${user}, bem-vindo ao seu ticket!\n\nDescreva seu problema ou dúvida que a equipe irá te atender em breve.`)
-        .setColor('#ffd700');
-      
+      const embed = new EmbedBuilder().setTitle('🎫 Ticket').setDescription(`Olá ${user}, descreva seu problema!`).setColor('#ffd700');
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 Fechar Ticket').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('resolve_ticket').setLabel('✅ Marcar como Resolvido').setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 Fechar').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('resolve_ticket').setLabel('✅ Resolvido').setStyle(ButtonStyle.Success)
       );
-      
-      await ticketChannel.send({ content: `${user} <@&${STAFF_ROLE}>`, embeds: [embed], components: [row] });
+      await ticketChannel.send({ content: `${user}`, embeds: [embed], components: [row] });
       await interaction.reply({ content: '✅ Ticket criado! <#' + ticketChannel.id + '>', ephemeral: true });
     } catch(e) {
-      console.error('Erro ao criar ticket:', e);
-      await interaction.reply({ content: '❌ Erro ao criar ticket. Verifique as permissões do bot.', ephemeral: true });
+      await interaction.reply({ content: '❌ Erro ao criar ticket. Dê permissão de Gerenciar Canais ao bot!', ephemeral: true });
     }
   }
   
-  // ============================================
-  // BOTÃO: FECHAR TICKET
-  // ============================================
   if (interaction.isButton() && interaction.customId === 'close_ticket') {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: '❌ Apenas Staff pode fechar tickets!', ephemeral: true });
-    }
-    const channel = interaction.channel;
-    if (!channel.name.startsWith('ticket-')) return;
-    await interaction.reply({ content: '🔒 Ticket fechado! O canal será excluído em 5 segundos.' });
-    setTimeout(async () => { await channel.delete().catch(() => {}); }, 5000);
+    if (!isStaff(interaction.member)) return interaction.reply({ content: '❌ Apenas Staff!', ephemeral: true });
+    await interaction.reply({ content: '🔒 Fechando...' });
+    setTimeout(async () => { await interaction.channel.delete().catch(() => {}); }, 5000);
   }
   
-  // ============================================
-  // BOTÃO: MARCAR COMO RESOLVIDO
-  // ============================================
   if (interaction.isButton() && interaction.customId === 'resolve_ticket') {
-    if (!isStaff(interaction.member)) {
-      return interaction.reply({ content: '❌ Apenas Staff pode resolver tickets!', ephemeral: true });
-    }
-    const channel = interaction.channel;
-    if (!channel.name.startsWith('ticket-')) return;
-    
-    // Renomear canal
-    await channel.setName(`✅-${channel.name}`).catch(() => {});
-    
-    const embed = new EmbedBuilder()
-      .setTitle('✅ Ticket Resolvido')
-      .setDescription(`Ticket marcado como resolvido por ${interaction.user}. O canal será excluído em 10 segundos.`)
-      .setColor('#51cf66');
-    
-    await interaction.reply({ embeds: [embed] });
-    setTimeout(async () => { await channel.delete().catch(() => {}); }, 10000);
+    if (!isStaff(interaction.member)) return interaction.reply({ content: '❌ Apenas Staff!', ephemeral: true });
+    await interaction.channel.setName(`✅-${interaction.channel.name}`).catch(() => {});
+    await interaction.reply({ content: '✅ Ticket resolvido! Canal será excluído em 10s.' });
+    setTimeout(async () => { await interaction.channel.delete().catch(() => {}); }, 10000);
   }
   
   if (!interaction.isCommand()) return;
@@ -217,19 +181,12 @@ client.on('interactionCreate', async (interaction) => {
   const banned = loadBanned();
   const userTag = interaction.user.tag;
   
-  if (banned.includes(userTag) && !isStaff(member)) {
-    return interaction.reply({ content: '🚫 Você está banido!', ephemeral: true });
-  }
+  if (banned.includes(userTag) && !isStaff(member)) return interaction.reply({ content: '🚫 Banido!', ephemeral: true });
   
   const staffCommands = ['relatorio', 'deletarkey', 'ban', 'unban', 'keyscliente', 'expirarkey', 'statuskey', 'limparlogs', 'fecharticket'];
-  if (staffCommands.includes(interaction.commandName) && !isStaff(member)) {
-    return interaction.reply({ content: '❌ Apenas **🛡️Staff** pode usar este comando!', ephemeral: true });
-  }
+  if (staffCommands.includes(interaction.commandName) && !isStaff(member)) return interaction.reply({ content: '❌ Apenas Staff!', ephemeral: true });
   
-  const publicCommands = ['gerarkey', 'keys'];
-  if (publicCommands.includes(interaction.commandName) && !hasPermission(member)) {
-    return interaction.reply({ content: '❌ Você não tem permissão!', ephemeral: true });
-  }
+  if (['gerarkey', 'keys'].includes(interaction.commandName) && !hasPermission(member)) return interaction.reply({ content: '❌ Sem permissão!', ephemeral: true });
   
   const cmd = interaction.commandName;
   
@@ -237,19 +194,18 @@ client.on('interactionCreate', async (interaction) => {
     const duration = interaction.options.getString('duracao');
     const quantity = interaction.options.getInteger('quantidade') || 1;
     const clientName = interaction.options.getString('cliente') || 'N/A';
-    if (quantity < 1 || quantity > 10) return interaction.reply({ content: '❌ Quantidade deve ser entre 1 e 10', ephemeral: true });
+    if (quantity < 1 || quantity > 10) return interaction.reply({ content: '❌ Máx 10!', ephemeral: true });
     const keys = [];
     for (let i = 0; i < quantity; i++) keys.push({ key: generateKey(duration), plan: 'premium', client: clientName, revendedor: userTag, duration: DURATION_LABELS[duration], created: new Date().toISOString(), status: 'active' });
     const allKeys = loadKeys(); allKeys.unshift(...keys); saveKeys(allKeys);
-    sendLog(client, userTag, '🔑 Keys Geradas', `**Qtd:** ${quantity}\n**Duração:** ${DURATION_LABELS[duration]}\n**Cliente:** ${clientName}`);
-    const embed = new EmbedBuilder().setTitle('🔑 Key(s) Gerada(s)').setColor('#ff3333').setDescription(keys.map(k => `\`\`\`${k.key}\`\`\``).join('\n')).addFields({ name: '📅 Duração', value: DURATION_LABELS[duration], inline: true }, { name: '👤 Cliente', value: clientName, inline: true }, { name: '📦 Qtd', value: String(quantity), inline: true }).setFooter({ text: 'King Lovable | ' + new Date().toLocaleString('pt-BR') });
+    sendLog(client, userTag, '🔑 Keys', `**${quantity}** keys - ${DURATION_LABELS[duration]} - ${clientName}`);
+    const embed = new EmbedBuilder().setTitle('🔑 Keys Geradas').setColor('#ff3333').setDescription(keys.map(k => `\`${k.key}\``).join('\n')).addFields({ name: '📅', value: DURATION_LABELS[duration], inline: true }, { name: '👤', value: clientName, inline: true }, { name: '📦', value: String(quantity), inline: true });
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
   if (cmd === 'keys') {
     const allKeys = loadKeys();
-    const embed = new EmbedBuilder().setTitle('📊 Estatísticas').setColor('#ffd700').addFields({ name: '📦 Total', value: String(allKeys.length), inline: true }, { name: '🟢 Ativas', value: String(allKeys.filter(k => k.status === 'active').length), inline: true }, { name: '🔴 Expiradas', value: String(allKeys.filter(k => k.status === 'expired').length), inline: true });
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📊 Stats').setColor('#ffd700').addFields({ name: '📦 Total', value: String(allKeys.length), inline: true }, { name: '🟢 Ativas', value: String(allKeys.filter(k => k.status === 'active').length), inline: true }, { name: '🔴 Exp', value: String(allKeys.filter(k => k.status === 'expired').length), inline: true })], ephemeral: true });
   }
   
   if (cmd === 'relatorio') {
@@ -257,85 +213,23 @@ client.on('interactionCreate', async (interaction) => {
     let allKeys = loadKeys();
     if (rev) allKeys = allKeys.filter(k => k.revendedor && k.revendedor.toLowerCase().includes(rev.toLowerCase()));
     const porRev = {};
-    allKeys.forEach(k => { const r = k.revendedor || 'Desconhecido'; if (!porRev[r]) porRev[r] = { total: 0, ativas: 0 }; porRev[r].total++; if (k.status === 'active') porRev[r].ativas++; });
+    allKeys.forEach(k => { const r = k.revendedor || 'N/A'; if (!porRev[r]) porRev[r] = { t: 0, a: 0 }; porRev[r].t++; if (k.status === 'active') porRev[r].a++; });
     const embed = new EmbedBuilder().setTitle('📋 Relatório').setColor('#ffd700');
-    if (Object.keys(porRev).length === 0) embed.setDescription('Nenhuma key.');
-    else { let d = ''; for (const [r, s] of Object.entries(porRev)) d += `**${r}**\n📦 ${s.total} | 🟢 ${s.ativas}\n\n`; embed.setDescription(d); }
+    let d = ''; for (const [r, s] of Object.entries(porRev)) d += `**${r}**\n📦 ${s.t} | 🟢 ${s.a}\n\n`;
+    embed.setDescription(d || 'Nenhuma key');
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
-  if (cmd === 'deletarkey') {
-    const key = interaction.options.getString('key').trim().toUpperCase();
-    let allKeys = loadKeys();
-    if (!allKeys.find(k => k.key === key)) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
-    allKeys = allKeys.filter(k => k.key !== key);
-    saveKeys(allKeys);
-    sendLog(client, userTag, '🗑️ Key Apagada', `**Key:** \`${key}\``);
-    await interaction.reply({ content: '✅ Key apagada!', ephemeral: true });
-  }
-  
-  if (cmd === 'ban') {
-    const usuario = interaction.options.getString('usuario');
-    let banned = loadBanned();
-    if (banned.includes(usuario)) return interaction.reply({ content: '❌ Já está banido!', ephemeral: true });
-    banned.push(usuario);
-    saveBanned(banned);
-    await interaction.reply({ content: '🚫 ' + usuario + ' banido!', ephemeral: true });
-  }
-  
-  if (cmd === 'unban') {
-    const usuario = interaction.options.getString('usuario');
-    let banned = loadBanned();
-    if (!banned.includes(usuario)) return interaction.reply({ content: '❌ Não está banido!', ephemeral: true });
-    banned = banned.filter(u => u !== usuario);
-    saveBanned(banned);
-    await interaction.reply({ content: '✅ ' + usuario + ' desbanido!', ephemeral: true });
-  }
-  
-  if (cmd === 'keyscliente') {
-    const cliente = interaction.options.getString('cliente').toLowerCase();
-    let allKeys = loadKeys().filter(k => k.client && k.client.toLowerCase().includes(cliente));
-    if (allKeys.length === 0) return interaction.reply({ content: '❌ Nenhuma key!', ephemeral: true });
-    const embed = new EmbedBuilder().setTitle('🔍 Keys: ' + cliente).setColor('#ffd700').setDescription(allKeys.slice(0, 20).map(k => `\`${k.key}\` - ${k.duration}`).join('\n'));
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-  
-  if (cmd === 'expirarkey') {
-    const key = interaction.options.getString('key').trim().toUpperCase();
-    let allKeys = loadKeys();
-    const found = allKeys.find(k => k.key === key);
-    if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
-    found.status = 'expired';
-    saveKeys(allKeys);
-    await interaction.reply({ content: '✅ Key expirada!', ephemeral: true });
-  }
-  
-  if (cmd === 'statuskey') {
-    const key = interaction.options.getString('key').trim().toUpperCase();
-    const found = loadKeys().find(k => k.key === key);
-    if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
-    const embed = new EmbedBuilder().setTitle('🔍 Status').setColor(found.status === 'active' ? '#51cf66' : '#ff3333').addFields({ name: '🔑 Key', value: '`' + found.key + '`' }, { name: '📊 Status', value: found.status === 'active' ? '🟢 Ativa' : '🔴 Expirada' }, { name: '👤 Cliente', value: found.client || 'N/A' }, { name: '🛡️ Revendedor', value: found.revendedor || 'N/A' });
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-  
-  if (cmd === 'limparlogs') {
-    let allKeys = loadKeys();
-    const expired = allKeys.filter(k => k.status === 'expired');
-    allKeys = allKeys.filter(k => k.status !== 'expired');
-    saveKeys(allKeys);
-    await interaction.reply({ content: `✅ ${expired.length} keys removidas!`, ephemeral: true });
-  }
-  
-  if (cmd === 'fecharticket') {
-    if (!isStaff(member)) return interaction.reply({ content: '❌ Apenas Staff!', ephemeral: true });
-    const channel = interaction.channel;
-    if (!channel.name.startsWith('ticket-')) return interaction.reply({ content: '❌ Não é um ticket!', ephemeral: true });
-    await interaction.reply({ content: '🔒 Fechando ticket...' });
-    setTimeout(async () => { await channel.delete().catch(() => {}); }, 5000);
-  }
+  if (cmd === 'deletarkey') { const key = interaction.options.getString('key').trim().toUpperCase(); let k = loadKeys(); k = k.filter(x => x.key !== key); saveKeys(k); sendLog(client, userTag, '🗑️ Key', `\`${key}\``); await interaction.reply({ content: '✅ Apagada!', ephemeral: true }); }
+  if (cmd === 'ban') { const u = interaction.options.getString('usuario'); let b = loadBanned(); if (b.includes(u)) return interaction.reply({ content: '❌ Já banido!', ephemeral: true }); b.push(u); saveBanned(b); await interaction.reply({ content: '🚫 ' + u + ' banido!', ephemeral: true }); }
+  if (cmd === 'unban') { const u = interaction.options.getString('usuario'); let b = loadBanned(); b = b.filter(x => x !== u); saveBanned(b); await interaction.reply({ content: '✅ ' + u + ' desbanido!', ephemeral: true }); }
+  if (cmd === 'keyscliente') { const c = interaction.options.getString('cliente').toLowerCase(); const keys = loadKeys().filter(k => k.client && k.client.toLowerCase().includes(c)); if (keys.length === 0) return interaction.reply({ content: '❌ Nenhuma!', ephemeral: true }); await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔍 ' + c).setColor('#ffd700').setDescription(keys.slice(0,20).map(k => `\`${k.key}\` - ${k.duration}`).join('\n'))], ephemeral: true }); }
+  if (cmd === 'expirarkey') { const key = interaction.options.getString('key').trim().toUpperCase(); let k = loadKeys(); const f = k.find(x => x.key === key); if (!f) return interaction.reply({ content: '❌ Não encontrada!', ephemeral: true }); f.status = 'expired'; saveKeys(k); await interaction.reply({ content: '✅ Expirada!', ephemeral: true }); }
+  if (cmd === 'statuskey') { const key = interaction.options.getString('key').trim().toUpperCase(); const f = loadKeys().find(k => k.key === key); if (!f) return interaction.reply({ content: '❌ Não encontrada!', ephemeral: true }); await interaction.reply({ embeds: [new EmbedBuilder().setTitle('🔍 Status').setColor(f.status==='active'?'#51cf66':'#ff3333').addFields({ name:'🔑', value:'`'+f.key+'`' },{ name:'📊', value:f.status==='active'?'🟢 Ativa':'🔴 Expirada' },{ name:'👤', value:f.client||'N/A' },{ name:'🛡️', value:f.revendedor||'N/A' })], ephemeral: true }); }
+  if (cmd === 'limparlogs') { let k = loadKeys(); const exp = k.filter(x => x.status==='expired'); k = k.filter(x => x.status!=='expired'); saveKeys(k); await interaction.reply({ content: `✅ ${exp.length} removidas!`, ephemeral: true }); }
+  if (cmd === 'fecharticket') { if (!interaction.channel.name.startsWith('ticket-')) return interaction.reply({ content: '❌ Não é ticket!', ephemeral: true }); await interaction.reply({ content: '🔒 Fechando...' }); setTimeout(async () => { await interaction.channel.delete().catch(() => {}); }, 5000); }
 });
 
-// Boas-vindas
 client.on('guildMemberAdd', async (member) => {
   try {
     const role = member.guild.roles.cache.find(r => r.name === MEMBER_ROLE);
