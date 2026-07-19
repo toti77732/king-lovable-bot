@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -12,6 +12,8 @@ const STAFF_ROLE = '🛡️Staff';
 const MEMBER_ROLE = '💙​membros';
 const WELCOME_CHANNEL_ID = '1528137128649687120';
 const LOGS_CHANNEL_ID = '1528140183361294398';
+const TICKET_CHANNEL_ID = '1528138255122567208';
+const TICKET_CATEGORY_ID = '1528138255122567208'; // ID da categoria onde os tickets serão criados
 
 const DURATION_LABELS = {
   '1m': '1 minuto', '5m': '5 minutos', '15m': '15 minutos', '30m': '30 minutos',
@@ -65,37 +67,47 @@ function isRevendedor(member) { return member.roles.cache.some(r => r.name === A
 function hasPermission(member) { return isStaff(member) || isRevendedor(member); }
 
 // ============================================
-// BOAS-VINDAS + CARGO AUTOMÁTICO
+// SISTEMA DE TICKETS
 // ============================================
-client.on('guildMemberAdd', async (member) => {
-  try {
-    // Dar cargo de membro
-    const role = member.guild.roles.cache.find(r => r.name === MEMBER_ROLE);
-    if (role) {
-      await member.roles.add(role);
-    }
-    
-    // Mensagem de boas-vindas
-    const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-    if (channel) {
-      const embed = new EmbedBuilder()
-        .setTitle('👋 Bem-vindo(a)!')
-        .setDescription(`Seja bem-vindo(a) ao servidor, ${member}! 🎉\n\nLeia as regras e aproveite!`)
-        .setColor('#ffd700')
-        .setThumbnail(member.user.displayAvatarURL())
-        .addFields(
-          { name: '👤 Usuário', value: member.user.tag, inline: true },
-          { name: '📅 Entrou em', value: new Date().toLocaleString('pt-BR'), inline: true }
-        )
-        .setFooter({ text: 'King Lovable' });
-      channel.send({ embeds: [embed] });
-    }
-  } catch(e) { console.error('Erro na boas-vindas:', e.message); }
-});
-
-client.once('ready', async () => {
+client.on('ready', async () => {
   console.log('🤖 Bot King Lovable online!');
   
+  // Criar painel de tickets
+  const ticketChannel = client.channels.cache.get(TICKET_CHANNEL_ID);
+  if (ticketChannel) {
+    // Limpar canal e enviar painel
+    const messages = await ticketChannel.messages.fetch({ limit: 10 });
+    await ticketChannel.bulkDelete(messages).catch(() => {});
+    
+    const embed = new EmbedBuilder()
+      .setTitle('⚡┃King Atendimento')
+      .setDescription(
+        '📦 **Abra este ticket para:**\n' +
+        '• Resgatar seu produto\n' +
+        '• Enviar comprovante de pagamento\n' +
+        '• Tirar dúvidas\n' +
+        '• Resolver problemas\n' +
+        '• Solicitar suporte\n\n' +
+        '🔒 **Nosso atendimento é seguro e privado.**\n' +
+        '⚡ **Respondemos o mais rápido possível.**\n\n' +
+        '🙏 Pedimos que tenha paciência e envie todas as informações necessárias para agilizar seu atendimento.\n\n' +
+        '💸 **King Lovable – rapidez, confiança e qualidade.**'
+      )
+      .setColor('#ffd700')
+      .setFooter({ text: 'King Lovable Tickets' });
+    
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('open_ticket')
+          .setLabel('📩 Abrir Ticket')
+          .setStyle(ButtonStyle.Danger)
+      );
+    
+    await ticketChannel.send({ embeds: [embed], components: [row] });
+  }
+  
+  // Registrar comandos
   const guild = client.guilds.cache.get('1528118685720383790');
   if (guild) {
     await guild.commands.set([
@@ -132,13 +144,70 @@ client.once('ready', async () => {
       { name: 'statuskey', description: '🔍 Ver detalhes de uma key (Staff)', options: [
         { name: 'key', description: 'Key a ser verificada', type: 3, required: true }
       ]},
-      { name: 'limparlogs', description: '🧹 Limpar keys expiradas (Staff)' }
+      { name: 'limparlogs', description: '🧹 Limpar keys expiradas (Staff)' },
+      { name: 'fecharticket', description: '🔒 Fechar ticket (Staff)' }
     ]);
     console.log('✅ Comandos registrados!');
   }
 });
 
+// Abrir ticket ao clicar no botão
 client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton()) {
+    if (interaction.customId === 'open_ticket') {
+      const user = interaction.user;
+      const guild = interaction.guild;
+      
+      // Verificar se já tem ticket aberto
+      const existingChannel = guild.channels.cache.find(c => c.name === `ticket-${user.username.toLowerCase()}`);
+      if (existingChannel) {
+        return interaction.reply({ content: '❌ Você já tem um ticket aberto! <#' + existingChannel.id + '>', ephemeral: true });
+      }
+      
+      // Criar canal de ticket
+      const ticketChannel = await guild.channels.create({
+        name: `ticket-${user.username}`,
+        type: ChannelType.GuildText,
+        parent: TICKET_CATEGORY_ID,
+        permissionOverwrites: [
+          { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+          { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+          { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+        ]
+      });
+      
+      // Adicionar staff
+      const staffRole = guild.roles.cache.find(r => r.name === STAFF_ROLE);
+      if (staffRole) {
+        ticketChannel.permissionOverwrites.create(staffRole, { ViewChannel: true, SendMessages: true });
+      }
+      
+      const embed = new EmbedBuilder()
+        .setTitle('🎫 Ticket de Atendimento')
+        .setDescription(`Olá ${user}, bem-vindo ao seu ticket!\n\nDescreva seu problema ou dúvida que a equipe irá te atender em breve.`)
+        .setColor('#ffd700')
+        .setFooter({ text: 'King Lovable | ' + new Date().toLocaleString('pt-BR') });
+      
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 Fechar Ticket').setStyle(ButtonStyle.Secondary)
+        );
+      
+      await ticketChannel.send({ content: `${user}`, embeds: [embed], components: [row] });
+      await interaction.reply({ content: '✅ Ticket criado! <#' + ticketChannel.id + '>', ephemeral: true });
+    }
+    
+    if (interaction.customId === 'close_ticket') {
+      const channel = interaction.channel;
+      if (!channel.name.startsWith('ticket-')) return;
+      
+      await interaction.reply({ content: '🔒 Fechando ticket em 5 segundos...' });
+      setTimeout(async () => {
+        await channel.delete();
+      }, 5000);
+    }
+  }
+  
   if (!interaction.isCommand()) return;
   
   const member = interaction.member;
@@ -146,10 +215,10 @@ client.on('interactionCreate', async (interaction) => {
   const userTag = interaction.user.tag;
   
   if (banned.includes(userTag) && !isStaff(member)) {
-    return interaction.reply({ content: '🚫 Você está banido do sistema!', ephemeral: true });
+    return interaction.reply({ content: '🚫 Você está banido!', ephemeral: true });
   }
   
-  const staffCommands = ['relatorio', 'deletarkey', 'ban', 'unban', 'keyscliente', 'expirarkey', 'statuskey', 'limparlogs'];
+  const staffCommands = ['relatorio', 'deletarkey', 'ban', 'unban', 'keyscliente', 'expirarkey', 'statuskey', 'limparlogs', 'fecharticket'];
   if (staffCommands.includes(interaction.commandName) && !isStaff(member)) {
     return interaction.reply({ content: '❌ Apenas **🛡️Staff** pode usar este comando!', ephemeral: true });
   }
@@ -183,11 +252,12 @@ client.on('interactionCreate', async (interaction) => {
   
   if (cmd === 'keys') {
     const allKeys = loadKeys();
-    const active = allKeys.filter(k => k.status === 'active').length;
-    const expired = allKeys.filter(k => k.status === 'expired').length;
     const embed = new EmbedBuilder().setTitle('📊 Estatísticas').setColor('#ffd700')
-      .addFields({ name: '📦 Total', value: String(allKeys.length), inline: true }, { name: '🟢 Ativas', value: String(active), inline: true }, { name: '🔴 Expiradas', value: String(expired), inline: true })
-      .setFooter({ text: 'King Lovable Bot' });
+      .addFields(
+        { name: '📦 Total', value: String(allKeys.length), inline: true },
+        { name: '🟢 Ativas', value: String(allKeys.filter(k => k.status === 'active').length), inline: true },
+        { name: '🔴 Expiradas', value: String(allKeys.filter(k => k.status === 'expired').length), inline: true }
+      );
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
@@ -196,10 +266,10 @@ client.on('interactionCreate', async (interaction) => {
     let allKeys = loadKeys();
     if (rev) allKeys = allKeys.filter(k => k.revendedor && k.revendedor.toLowerCase().includes(rev.toLowerCase()));
     const porRev = {};
-    allKeys.forEach(k => { const r = k.revendedor || 'Desconhecido'; if (!porRev[r]) porRev[r] = { total: 0, ativas: 0, expiradas: 0 }; porRev[r].total++; if (k.status === 'active') porRev[r].ativas++; else porRev[r].expiradas++; });
-    const embed = new EmbedBuilder().setTitle('📋 Relatório').setColor('#ffd700').setFooter({ text: 'King Lovable Bot' });
+    allKeys.forEach(k => { const r = k.revendedor || 'Desconhecido'; if (!porRev[r]) porRev[r] = { total: 0, ativas: 0 }; porRev[r].total++; if (k.status === 'active') porRev[r].ativas++; });
+    const embed = new EmbedBuilder().setTitle('📋 Relatório').setColor('#ffd700');
     if (Object.keys(porRev).length === 0) embed.setDescription('Nenhuma key.');
-    else { let d = ''; for (const [r, s] of Object.entries(porRev)) d += `**${r}**\n📦 ${s.total} | 🟢 ${s.ativas} | 🔴 ${s.expiradas}\n\n`; embed.setDescription(d); }
+    else { let d = ''; for (const [r, s] of Object.entries(porRev)) d += `**${r}**\n📦 ${s.total} | 🟢 ${s.ativas}\n\n`; embed.setDescription(d); }
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
@@ -210,7 +280,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
     allKeys = allKeys.filter(k => k.key !== key);
     saveKeys(allKeys);
-    sendLog(client, userTag, '🗑️ Key Apagada', `**Key:** \`${key}\`\n**Cliente:** ${found.client}\n**Revendedor:** ${found.revendedor}`);
+    sendLog(client, userTag, '🗑️ Key Apagada', `**Key:** \`${key}\``);
     await interaction.reply({ content: '✅ Key apagada!', ephemeral: true });
   }
   
@@ -230,7 +300,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!banned.includes(usuario)) return interaction.reply({ content: '❌ Não está banido!', ephemeral: true });
     banned = banned.filter(u => u !== usuario);
     saveBanned(banned);
-    sendLog(client, userTag, '✅ Desbanido', `**Usuário:** ${usuario}`);
     await interaction.reply({ content: '✅ ' + usuario + ' desbanido!', ephemeral: true });
   }
   
@@ -239,8 +308,7 @@ client.on('interactionCreate', async (interaction) => {
     let allKeys = loadKeys().filter(k => k.client && k.client.toLowerCase().includes(cliente));
     if (allKeys.length === 0) return interaction.reply({ content: '❌ Nenhuma key!', ephemeral: true });
     const embed = new EmbedBuilder().setTitle('🔍 Keys: ' + cliente).setColor('#ffd700')
-      .setDescription(allKeys.slice(0, 20).map(k => `\`${k.key}\` - ${k.duration} - ${k.status === 'active' ? '🟢' : '🔴'}`).join('\n'))
-      .setFooter({ text: `Total: ${allKeys.length}` });
+      .setDescription(allKeys.slice(0, 20).map(k => `\`${k.key}\` - ${k.duration}`).join('\n'));
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
   
@@ -251,22 +319,19 @@ client.on('interactionCreate', async (interaction) => {
     if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
     found.status = 'expired';
     saveKeys(allKeys);
-    sendLog(client, userTag, '⏰ Key Expirada', `**Key:** \`${key}\``);
     await interaction.reply({ content: '✅ Key expirada!', ephemeral: true });
   }
   
   if (cmd === 'statuskey') {
     const key = interaction.options.getString('key').trim().toUpperCase();
-    let allKeys = loadKeys();
-    const found = allKeys.find(k => k.key === key);
+    const found = loadKeys().find(k => k.key === key);
     if (!found) return interaction.reply({ content: '❌ Key não encontrada!', ephemeral: true });
     const embed = new EmbedBuilder().setTitle('🔍 Status').setColor(found.status === 'active' ? '#51cf66' : '#ff3333')
       .addFields(
         { name: '🔑 Key', value: '`' + found.key + '`' },
         { name: '📊 Status', value: found.status === 'active' ? '🟢 Ativa' : '🔴 Expirada' },
-        { name: '📅 Duração', value: found.duration || 'N/A', inline: true },
-        { name: '👤 Cliente', value: found.client || 'N/A', inline: true },
-        { name: '🛡️ Revendedor', value: found.revendedor || 'N/A', inline: true }
+        { name: '👤 Cliente', value: found.client || 'N/A' },
+        { name: '🛡️ Revendedor', value: found.revendedor || 'N/A' }
       );
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
@@ -276,9 +341,28 @@ client.on('interactionCreate', async (interaction) => {
     const expired = allKeys.filter(k => k.status === 'expired');
     allKeys = allKeys.filter(k => k.status !== 'expired');
     saveKeys(allKeys);
-    sendLog(client, userTag, '🧹 Limpeza', `**${expired.length}** keys removidas.`);
     await interaction.reply({ content: `✅ ${expired.length} keys removidas!`, ephemeral: true });
   }
+  
+  if (cmd === 'fecharticket') {
+    const channel = interaction.channel;
+    if (!channel.name.startsWith('ticket-')) return interaction.reply({ content: '❌ Este não é um ticket!', ephemeral: true });
+    await interaction.reply({ content: '🔒 Fechando ticket em 5 segundos...' });
+    setTimeout(async () => { await channel.delete(); }, 5000);
+  }
+});
+
+// Boas-vindas
+client.on('guildMemberAdd', async (member) => {
+  try {
+    const role = member.guild.roles.cache.find(r => r.name === MEMBER_ROLE);
+    if (role) await member.roles.add(role);
+    const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
+    if (channel) {
+      const embed = new EmbedBuilder().setTitle('👋 Bem-vindo(a)!').setDescription(`Bem-vindo ao servidor, ${member}! 🎉`).setColor('#ffd700');
+      channel.send({ embeds: [embed] });
+    }
+  } catch(e) {}
 });
 
 client.login(process.env.DISCORD_TOKEN);
