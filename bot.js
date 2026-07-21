@@ -69,7 +69,6 @@ function hasPermission(member) { return isStaff(member) || isRevendedor(member);
 client.on('ready', async () => {
   console.log('🤖 Bot King Lovable online!');
   
-  // Painel de tickets - verificar se já existe antes de criar
   const ticketChannel = client.channels.cache.get(TICKET_CHANNEL_ID);
   if (ticketChannel) {
     const messages = await ticketChannel.messages.fetch({ limit: 10 });
@@ -125,12 +124,23 @@ client.on('interactionCreate', async (interaction) => {
         name: `ticket-${user.username}`, type: ChannelType.GuildText, parent: TICKET_CATEGORY_ID,
         permissionOverwrites: [
           { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-          { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-          { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
+          { id: user.id, allow: [
+            PermissionFlagsBits.ViewChannel, 
+            PermissionFlagsBits.SendMessages, 
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks
+          ]},
+          { id: client.user.id, allow: [
+            PermissionFlagsBits.ViewChannel, 
+            PermissionFlagsBits.SendMessages, 
+            PermissionFlagsBits.ManageChannels,
+            PermissionFlagsBits.ReadMessageHistory
+          ]}
         ]
       });
       const staffRole = guild.roles.cache.find(r => r.name === STAFF_ROLE);
-      if (staffRole) await ticketChannel.permissionOverwrites.create(staffRole, { ViewChannel: true, SendMessages: true });
+      if (staffRole) await ticketChannel.permissionOverwrites.create(staffRole, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
       const embed = new EmbedBuilder().setTitle('🎫 Ticket').setDescription(`Olá ${user}, descreva seu problema!`).setColor('#ffd700');
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('close_ticket').setLabel('🔒 Fechar').setStyle(ButtonStyle.Secondary),
@@ -186,7 +196,6 @@ client.on('interactionCreate', async (interaction) => {
       .setFooter({ text: 'King Lovable | ' + new Date().toLocaleString('pt-BR') });
     await interaction.reply({ embeds: [embed], ephemeral: true });
     
-    // Mensagem pública fixa
     const embedPublico = new EmbedBuilder()
       .setTitle('🔑 Key(s) Gerada(s)')
       .setColor('#ff3333')
