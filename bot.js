@@ -169,14 +169,14 @@ client.on('interactionCreate', async (interaction) => {
     const clientName = interaction.options.getString('cliente') || 'N/A';
     if (quantity < 1 || quantity > 10) return interaction.reply({ content: '❌ Quantidade deve ser entre 1 e 10', ephemeral: true });
     
+    await interaction.deferReply({ ephemeral: true });
+    
     const keys = [];
     for (let i = 0; i < quantity; i++) keys.push({ key: generateKey(duration), plan: 'premium', client: clientName, revendedor: userTag, duration: DURATION_LABELS[duration], created: new Date().toISOString(), status: 'active' });
     const allKeys = loadKeys(); allKeys.unshift(...keys); saveKeys(allKeys);
     
-    // Log com keys completas (staff vê)
     sendLog(client, userTag, '🔑 Keys Geradas', `**Qtd:** ${quantity}\n**Duração:** ${DURATION_LABELS[duration]}\n**Cliente:** ${clientName}\n**Keys:**\n${keys.map(k => '`' + k.key + '`').join('\n')}`);
     
-    // Mensagem pública (todos veem, sem keys)
     const embedPublico = new EmbedBuilder()
       .setTitle('🔑 Key(s) Gerada(s)')
       .setColor('#ff3333')
@@ -189,7 +189,6 @@ client.on('interactionCreate', async (interaction) => {
       .setFooter({ text: 'King Lovable | ' + new Date().toLocaleString('pt-BR') });
     await interaction.channel.send({ embeds: [embedPublico] });
     
-    // Resposta privada (só quem gerou vê as keys)
     const embedPrivado = new EmbedBuilder()
       .setTitle('🔑 Sua(s) Key(s)')
       .setColor('#51cf66')
@@ -198,8 +197,8 @@ client.on('interactionCreate', async (interaction) => {
         { name: '📅 Duração', value: DURATION_LABELS[duration], inline: true },
         { name: '👤 Cliente', value: clientName, inline: true }
       )
-      .setFooter({ text: '⚠️ Guarde esta key! Ela não será mostrada novamente.' });
-    await interaction.reply({ embeds: [embedPrivado], ephemeral: true });
+      .setFooter({ text: '⚠️ Guarde esta key!' });
+    await interaction.editReply({ embeds: [embedPrivado] });
   }
   
   if (cmd === 'keys') { const allKeys = loadKeys(); await interaction.reply({ embeds: [new EmbedBuilder().setTitle('📊 Stats').setColor('#ffd700').addFields({ name: '📦 Total', value: String(allKeys.length), inline: true }, { name: '🟢 Ativas', value: String(allKeys.filter(k => k.status === 'active').length), inline: true }, { name: '🔴 Exp', value: String(allKeys.filter(k => k.status === 'expired').length), inline: true })], ephemeral: true }); }
