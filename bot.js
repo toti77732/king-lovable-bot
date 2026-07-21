@@ -69,14 +69,20 @@ function hasPermission(member) { return isStaff(member) || isRevendedor(member);
 client.on('ready', async () => {
   console.log('🤖 Bot King Lovable online!');
   
+  // Painel de tickets - verificar se já existe antes de criar
   const ticketChannel = client.channels.cache.get(TICKET_CHANNEL_ID);
   if (ticketChannel) {
-    const embed = new EmbedBuilder()
-      .setTitle('⚡┃King Atendimento')
-      .setDescription('📦 **Abra este ticket para:**\n• Resgatar seu produto\n• Enviar comprovante de pagamento\n• Tirar dúvidas\n• Resolver problemas\n• Solicitar suporte\n\n🔒 **Nosso atendimento é seguro e privado.**\n⚡ **Respondemos o mais rápido possível.**\n\n🙏 Pedimos que tenha paciência e envie todas as informações necessárias para agilizar seu atendimento.\n\n💸 **King Lovable – rapidez, confiança e qualidade.**')
-      .setColor('#ffd700');
-    const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('📩 Abrir Ticket').setStyle(ButtonStyle.Danger));
-    await ticketChannel.send({ embeds: [embed], components: [row] });
+    const messages = await ticketChannel.messages.fetch({ limit: 10 });
+    const hasPanel = messages.some(m => m.author.id === client.user.id && m.embeds.length > 0 && m.components.length > 0);
+    
+    if (!hasPanel) {
+      const embed = new EmbedBuilder()
+        .setTitle('⚡┃King Atendimento')
+        .setDescription('📦 **Abra este ticket para:**\n• Resgatar seu produto\n• Enviar comprovante de pagamento\n• Tirar dúvidas\n• Resolver problemas\n• Solicitar suporte\n\n🔒 **Nosso atendimento é seguro e privado.**\n⚡ **Respondemos o mais rápido possível.**\n\n🙏 Pedimos que tenha paciência e envie todas as informações necessárias para agilizar seu atendimento.\n\n💸 **King Lovable – rapidez, confiança e qualidade.**')
+        .setColor('#ffd700');
+      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('open_ticket').setLabel('📩 Abrir Ticket').setStyle(ButtonStyle.Danger));
+      await ticketChannel.send({ embeds: [embed], components: [row] });
+    }
   }
   
   const guild = client.guilds.cache.get('1528118685720383790');
@@ -132,7 +138,7 @@ client.on('interactionCreate', async (interaction) => {
       );
       await ticketChannel.send({ content: `${user}`, embeds: [embed], components: [row] });
       await interaction.reply({ content: '✅ Ticket criado! <#' + ticketChannel.id + '>', ephemeral: true });
-    } catch(e) { await interaction.reply({ content: '❌ Erro ao criar ticket. Dê permissão de Gerenciar Canais ao bot!', ephemeral: true }); }
+    } catch(e) { await interaction.reply({ content: '❌ Erro ao criar ticket.', ephemeral: true }); }
   }
   
   if (interaction.isButton() && interaction.customId === 'close_ticket') {
@@ -167,30 +173,25 @@ client.on('interactionCreate', async (interaction) => {
     const duration = interaction.options.getString('duracao');
     const quantity = interaction.options.getInteger('quantidade') || 1;
     const clientName = interaction.options.getString('cliente') || 'N/A';
-    if (quantity < 1 || quantity > 10) return interaction.reply({ content: '❌ Quantidade deve ser entre 1 e 10', ephemeral: true });
+    if (quantity < 1 || quantity > 10) return interaction.reply({ content: '❌ Máx 10!', ephemeral: true });
     
     const keys = [];
     for (let i = 0; i < quantity; i++) keys.push({ key: generateKey(duration), plan: 'premium', client: clientName, revendedor: userTag, duration: DURATION_LABELS[duration], created: new Date().toISOString(), status: 'active' });
     const allKeys = loadKeys(); allKeys.unshift(...keys); saveKeys(allKeys);
     sendLog(client, userTag, '🔑 Keys Geradas', `**Qtd:** ${quantity}\n**Duração:** ${DURATION_LABELS[duration]}\n**Cliente:** ${clientName}\n**Keys:**\n${keys.map(k => '`' + k.key + '`').join('\n')}`);
     
-    // Resposta privada com as keys (só quem gerou vê)
     const embed = new EmbedBuilder().setTitle('🔑 Key(s) Gerada(s)').setColor('#ff3333')
       .setDescription(keys.map(k => '`' + k.key + '`').join('\n'))
       .addFields({ name: '📅 Duração', value: DURATION_LABELS[duration], inline: true }, { name: '👤 Cliente', value: clientName, inline: true }, { name: '📦 Qtd', value: String(quantity), inline: true })
       .setFooter({ text: 'King Lovable | ' + new Date().toLocaleString('pt-BR') });
     await interaction.reply({ embeds: [embed], ephemeral: true });
     
-    // Mensagem pública no canal (fixa, não some)
+    // Mensagem pública fixa
     const embedPublico = new EmbedBuilder()
       .setTitle('🔑 Key(s) Gerada(s)')
       .setColor('#ff3333')
       .setDescription('📦 **' + quantity + ' key(s) gerada(s)!**')
-      .addFields(
-        { name: '📅 Duração', value: DURATION_LABELS[duration], inline: true },
-        { name: '👤 Cliente', value: clientName, inline: true },
-        { name: '🛡️ Revendedor', value: userTag, inline: true }
-      )
+      .addFields({ name: '📅 Duração', value: DURATION_LABELS[duration], inline: true }, { name: '👤 Cliente', value: clientName, inline: true }, { name: '🛡️ Revendedor', value: userTag, inline: true })
       .setFooter({ text: 'King Lovable | ' + new Date().toLocaleString('pt-BR') });
     await interaction.channel.send({ embeds: [embedPublico] });
   }
