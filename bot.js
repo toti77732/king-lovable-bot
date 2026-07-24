@@ -124,19 +124,8 @@ client.on('interactionCreate', async (interaction) => {
         name: `ticket-${user.username}`, type: ChannelType.GuildText, parent: TICKET_CATEGORY_ID,
         permissionOverwrites: [
           { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-          { id: user.id, allow: [
-            PermissionFlagsBits.ViewChannel, 
-            PermissionFlagsBits.SendMessages, 
-            PermissionFlagsBits.ReadMessageHistory,
-            PermissionFlagsBits.AttachFiles,
-            PermissionFlagsBits.EmbedLinks
-          ]},
-          { id: client.user.id, allow: [
-            PermissionFlagsBits.ViewChannel, 
-            PermissionFlagsBits.SendMessages, 
-            PermissionFlagsBits.ManageChannels,
-            PermissionFlagsBits.ReadMessageHistory
-          ]}
+          { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks] },
+          { id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory] }
         ]
       });
       const staffRole = guild.roles.cache.find(r => r.name === STAFF_ROLE);
@@ -218,12 +207,25 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.on('guildMemberAdd', async (member) => {
+  console.log('👋 Novo membro entrou:', member.user.tag);
   try {
     const role = member.guild.roles.cache.find(r => r.name === MEMBER_ROLE);
-    if (role) await member.roles.add(role);
+    if (role) {
+      await member.roles.add(role);
+      console.log('✅ Cargo adicionado:', MEMBER_ROLE);
+    } else {
+      console.log('❌ Cargo não encontrado:', MEMBER_ROLE);
+    }
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
-    if (channel) channel.send({ embeds: [new EmbedBuilder().setTitle('👋 Bem-vindo(a)!').setDescription(`Bem-vindo, ${member}! 🎉`).setColor('#ffd700')] });
-  } catch(e) {}
+    if (channel) {
+      channel.send({ embeds: [new EmbedBuilder().setTitle('👋 Bem-vindo(a)!').setDescription(`Bem-vindo, ${member}! 🎉`).setColor('#ffd700')] });
+      console.log('✅ Mensagem enviada no canal:', WELCOME_CHANNEL_ID);
+    } else {
+      console.log('❌ Canal não encontrado:', WELCOME_CHANNEL_ID);
+    }
+  } catch(e) {
+    console.error('❌ Erro na boas-vindas:', e.message);
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
