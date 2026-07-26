@@ -37,11 +37,13 @@ const CONFIG = {
   staffRole: process.env.STAFF_ROLE || '🛡️staff',
   memberRole: process.env.MEMBER_ROLE || '💙​membros',
   welcomeChannelId: process.env.WELCOME_CHANNEL_ID || '',
-  logsChannelId: process.env.LOGS_CHANNEL_ID || '',
+  logsChannelId: process.env.LOGS_CHANNEL_ID || '1528140183361294398',
   ticketChannelId: process.env.TICKET_CHANNEL_ID || '',
   ticketCategoryId: process.env.TICKET_CATEGORY_ID || '',
   salesCategoryId: process.env.SALES_CATEGORY_ID || '',
   customerRoleId: process.env.CUSTOMER_ROLE_ID || '',
+  resellerRoleId: process.env.RESELLER_ROLE_ID || '1528123348905758881',
+  resellerSalesChannelId: process.env.RESELLER_SALES_CHANNEL_ID || '1528217674277060709',
   pixKey: process.env.PIX_KEY || '',
   pixReceiverName: process.env.PIX_RECEIVER_NAME || '',
   pixReceiverCity: process.env.PIX_RECEIVER_CITY || '',
@@ -50,14 +52,26 @@ const CONFIG = {
 };
 
 const LOCAL_PANEL_IMAGE = path.join(__dirname, 'assets', 'king-lovable-panel.png');
+const LOCAL_RESELLER_PANEL_IMAGE = path.join(__dirname, 'assets', 'king-lovable-reseller-panel.png');
 
 const PLANS = {
-  daily: { name: 'Diário', emoji: '🟢', duration: '1d', durationLabel: '1 dia', price: 5.99 },
-  weekly: { name: 'Semanal', emoji: '🔵', duration: '7d', durationLabel: '7 dias', price: 14.99 },
-  monthly: { name: 'Mensal', emoji: '🟠', duration: '30d', durationLabel: '30 dias', price: 39.99 },
-  annual: { name: 'Anual', emoji: '🔴', duration: '365d', durationLabel: '1 ano', price: 99.99 },
-  lifetime: { name: 'Vitalício', emoji: '👑', duration: 'vitalicio', durationLabel: 'Vitalício', price: 139.99 }
+  daily: { name: 'Diário', duration: '1d', durationLabel: '1 dia', price: 5.99 },
+  weekly: { name: 'Semanal', duration: '7d', durationLabel: '7 dias', price: 14.99 },
+  monthly: { name: 'Mensal', duration: '30d', durationLabel: '30 dias', price: 39.99 },
+  annual: { name: 'Anual', duration: '365d', durationLabel: '1 ano', price: 67.90 },
+  lifetime: { name: 'Vitalício', emoji: '👑', duration: 'vitalicio', durationLabel: 'Vitalício', price: 99.99 }
 };
+
+const RESELLER_PLAN = {
+  name: 'Revendedor Vitalício',
+  duration: 'vitalicio',
+  durationLabel: 'Vitalício',
+  price: 69.99
+};
+
+function getCartPlan(cart) {
+  return cart.productType === 'reseller' ? RESELLER_PLAN : PLANS[cart.planId];
+}
 
 const DURATION_LABELS = {
   '1m': '1 minuto', '5m': '5 minutos', '15m': '15 minutos', '30m': '30 minutos',
@@ -271,6 +285,37 @@ function panelMessagePayload() {
   return payload;
 }
 
+function resellerPanelMessagePayload() {
+  const embed = new EmbedBuilder()
+    .setColor('#ffd700')
+    .setFooter({ text: 'King Lovable • Torne-se revendedor vitalício' });
+
+  if (fs.existsSync(LOCAL_RESELLER_PANEL_IMAGE)) {
+    embed.setImage('attachment://king-lovable-reseller-panel.png');
+  }
+
+  const payload = {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('buy_reseller')
+          .setLabel('Quero ser revendedor')
+          .setEmoji('💼')
+          .setStyle(ButtonStyle.Success)
+      )
+    ]
+  };
+  if (fs.existsSync(LOCAL_RESELLER_PANEL_IMAGE)) {
+    payload.files = [
+      new AttachmentBuilder(LOCAL_RESELLER_PANEL_IMAGE, {
+        name: 'king-lovable-reseller-panel.png'
+      })
+    ];
+  }
+  return payload;
+}
+
 function planSelectRow() {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
@@ -280,7 +325,7 @@ function planSelectRow() {
         Object.entries(PLANS).map(([value, plan]) => ({
           label: `King Lovable ${plan.name}`,
           description: `${formatPrice(plan.price)} • ${plan.durationLabel}`,
-          emoji: plan.emoji,
+          ...(plan.emoji ? { emoji: plan.emoji } : {}),
           value
         }))
       )
@@ -333,6 +378,10 @@ const commandDefinitions = [
   {
     name: 'painelvendas',
     description: '🛒 Publicar o painel de vendas neste canal (Staff)'
+  },
+  {
+    name: 'painelrevendedor',
+    description: '💼 Publicar o painel de revendedores neste canal (Staff)'
   },
   {
     name: 'pago',
@@ -434,7 +483,32 @@ async function ensureSupportPanel() {
   await channel.send({ embeds: [embed], components: [row] });
 }
 
-client.once('ready', async () => {
+async function ensureResellerPanel() {
+  if (!CONFIG.resellerSalesChannelId) return;
+  const channel = await client.channels.fetch(CONFIG.resellerSalesChannelId).catch(() => null);
+  if (!channel?.isTextBased()) {
+    throw new Error('Canal de revendedores não encontrado ou sem acesso.');
+  }
+
+  const messages = await channel.messages.fetch({ limit: 30 });
+  const exists = messages.some(
+    (message) => message.author.id === client.user.id &&
+      message.components.some((row) =>
+        row.components.some((item) => item.customId === 'buy_reseller')
+      )
+  );
+  if (!exists) {
+    await channel.send(resellerPanelMessagePayload());
+    await sendLog(
+      '💼 Painel de revendedores publicado',
+      'Sistema',
+      `Canal: <#${channel.id}>\nPreço: **${formatPrice(RESELLER_PLAN.price)}**`,
+      '#ffd700'
+    );
+  }
+}
+
+client.once('clientReady', async () => {
   console.log(`🤖 ${client.user.tag} online.`);
   const guild = await client.guilds.fetch(CONFIG.guildId).catch(() => null);
   if (!guild) {
@@ -444,11 +518,18 @@ client.once('ready', async () => {
 
   await guild.commands.set(commandDefinitions);
   await ensureSupportPanel().catch((error) => console.error('Painel de suporte:', error.message));
+  await ensureResellerPanel().catch((error) => console.error('Painel de revendedores:', error.message));
+  await sendLog(
+    '🟢 Bot iniciado',
+    'Sistema',
+    `Bot: **${client.user.tag}**\nComandos registrados e painéis verificados.`,
+    '#22c55e'
+  );
   console.log('✅ Comandos e painéis carregados.');
 });
 
-async function createSalesCart(interaction, planId) {
-  const plan = PLANS[planId];
+async function createSalesCart(interaction, planId, productType = 'customer') {
+  const plan = productType === 'reseller' ? RESELLER_PLAN : PLANS[planId];
   if (!plan) return interaction.reply({ content: '❌ Plano inválido.', ephemeral: true });
   if (!CONFIG.salesCategoryId) {
     return interaction.reply({
@@ -506,11 +587,11 @@ async function createSalesCart(interaction, planId) {
   }
 
   const channel = await interaction.guild.channels.create({
-    name: `carrinho-${safeChannelName(interaction.user.username)}`,
+    name: `${productType === 'reseller' ? 'revendedor' : 'carrinho'}-${safeChannelName(interaction.user.username)}`,
     type: ChannelType.GuildText,
     parent: CONFIG.salesCategoryId,
     permissionOverwrites: overwrites,
-    topic: `Carrinho King Lovable • Cliente: ${interaction.user.id} • Plano: ${planId}`
+    topic: `Carrinho King Lovable • Cliente: ${interaction.user.id} • Tipo: ${productType} • Plano: ${planId}`
   });
 
   const carts = loadJson(FILES.carts);
@@ -520,6 +601,7 @@ async function createSalesCart(interaction, planId) {
     userId: interaction.user.id,
     userTag: interaction.user.tag,
     planId,
+    productType,
     amount: plan.price,
     status: 'pending',
     createdAt: new Date().toISOString(),
@@ -533,6 +615,12 @@ async function createSalesCart(interaction, planId) {
     components: [cartButtons()]
   });
   await interaction.editReply({ content: `✅ Carrinho criado: ${channel}` });
+  await sendLog(
+    productType === 'reseller' ? '💼 Carrinho de revendedor criado' : '🛒 Carrinho criado',
+    interaction.user.tag,
+    `Pedido: \`${carts[0].id}\`\nCanal: ${channel}\nProduto: **${plan.name}**\nValor: **${formatPrice(plan.price)}**`,
+    '#ffd700'
+  );
 }
 
 async function showPixPayment(interaction) {
@@ -552,7 +640,7 @@ async function showPixPayment(interaction) {
   }
 
   await interaction.deferReply();
-  const plan = PLANS[cart.planId];
+  const plan = getCartPlan(cart);
   const txid = cart.id.replace(/[^A-Z0-9]/gi, '').slice(0, 25);
   const payload = createPixPayload({
     key: CONFIG.pixKey,
@@ -595,6 +683,12 @@ async function showPixPayment(interaction) {
   );
 
   await interaction.editReply({ embeds: [embed], files: [attachment], components: [row] });
+  await sendLog(
+    '💠 Pix gerado',
+    interaction.user.tag,
+    `Pedido: \`${cart.id}\`\nProduto: **${plan.name}**\nValor: **${formatPrice(cart.amount)}**\nCanal: ${interaction.channel}`,
+    '#22c55e'
+  );
 }
 
 async function notifyPaid(interaction) {
@@ -633,7 +727,7 @@ async function notifyPaid(interaction) {
   await sendLog(
     '💸 Pagamento informado',
     interaction.user.tag,
-    `Pedido: \`${cart.id}\`\nPlano: **${PLANS[cart.planId].name}**\nValor: **${formatPrice(cart.amount)}**`,
+    `Pedido: \`${cart.id}\`\nProduto: **${getCartPlan(cart).name}**\nValor: **${formatPrice(cart.amount)}**\nCanal: ${interaction.channel}`,
     '#f59e0b'
   );
 }
@@ -647,36 +741,41 @@ async function finalizeSale(interaction) {
   }
 
   await interaction.deferReply();
-  const plan = PLANS[cart.planId];
-  const license = {
-    key: generateKey(plan.duration),
-    plan: cart.planId,
-    client: cart.userTag,
-    clientId: cart.userId,
-    revendedor: interaction.user.tag,
-    duration: plan.durationLabel,
-    durationCode: plan.duration,
-    created: new Date().toISOString(),
-    status: 'active',
-    orderId: cart.id
-  };
+  const plan = getCartPlan(cart);
+  const isResellerPurchase = cart.productType === 'reseller';
+  let license = null;
 
-  const keys = loadJson(FILES.keys);
-  keys.unshift(license);
-  saveJson(FILES.keys, keys);
+  if (!isResellerPurchase) {
+    license = {
+      key: generateKey(plan.duration),
+      plan: cart.planId,
+      client: cart.userTag,
+      clientId: cart.userId,
+      revendedor: interaction.user.tag,
+      duration: plan.durationLabel,
+      durationCode: plan.duration,
+      created: new Date().toISOString(),
+      status: 'active',
+      orderId: cart.id
+    };
+    const keys = loadJson(FILES.keys);
+    keys.unshift(license);
+    saveJson(FILES.keys, keys);
+  }
 
   const sale = {
     orderId: cart.id,
     userId: cart.userId,
     userTag: cart.userTag,
     planId: cart.planId,
+    productType: cart.productType || 'customer',
     planName: plan.name,
     duration: plan.durationLabel,
     amount: cart.amount,
     paymentMethod: 'pix_manual',
     confirmedById: interaction.user.id,
     confirmedByTag: interaction.user.tag,
-    key: license.key,
+    key: license?.key || null,
     paidAt: new Date().toISOString()
   };
   const sales = loadJson(FILES.sales);
@@ -686,19 +785,22 @@ async function finalizeSale(interaction) {
     status: 'paid',
     paidAt: sale.paidAt,
     confirmedById: interaction.user.id,
-    key: license.key
+    key: license?.key || null
   });
 
   const buyer = await client.users.fetch(cart.userId);
-  let customerRoleAdded = false;
-  if (CONFIG.customerRoleId) {
+  const purchaseRoleId = isResellerPurchase ? CONFIG.resellerRoleId : CONFIG.customerRoleId;
+  let purchaseRoleAdded = false;
+  if (purchaseRoleId) {
     try {
       const buyerMember = await interaction.guild.members.fetch(cart.userId);
-      await buyerMember.roles.add(CONFIG.customerRoleId, `Compra confirmada • Pedido ${cart.id}`);
-      customerRoleAdded = true;
+      await buyerMember.roles.add(purchaseRoleId, `Compra confirmada • Pedido ${cart.id}`);
+      purchaseRoleAdded = true;
     } catch (error) {
       await sendLog(
-        '⚠️ Cargo de cliente não adicionado',
+        isResellerPurchase
+          ? '⚠️ Cargo de revendedor não adicionado'
+          : '⚠️ Cargo de cliente não adicionado',
         interaction.user.tag,
         `Pedido: \`${cart.id}\`\nCliente: <@${cart.userId}>\nErro: \`${error.message}\``,
         '#f59e0b'
@@ -706,17 +808,32 @@ async function finalizeSale(interaction) {
     }
   }
 
-  const deliveryEmbed = new EmbedBuilder()
-    .setTitle('👑 Sua key King Lovable chegou!')
-    .setDescription(
-      `**Plano:** ${plan.name}\n` +
-      `**Duração:** ${plan.durationLabel}\n\n` +
-      `**Sua key:**\n\`\`\`\n${license.key}\n\`\`\`\n` +
-      'Guarde esta mensagem em um local seguro.'
-    )
-    .setColor('#ffd700')
-    .setFooter({ text: `Pedido ${cart.id}` })
-    .setTimestamp();
+  const deliveryEmbed = isResellerPurchase
+    ? new EmbedBuilder()
+      .setTitle('👑 Bem-vindo(a) ao time de revendedores!')
+      .setDescription(
+        `Obrigado pela sua compra, ${buyer}!\n\n` +
+        'Agora você é oficialmente **Revendedor(a) King Lovable**.\n\n' +
+        '✅ Seu cargo de revendedor foi liberado\n' +
+        '🔑 Você já pode acessar o gerador de keys\n' +
+        '💰 Você define seu preço de venda e fica com 100% do lucro\n' +
+        '💬 Os canais exclusivos de suporte e materiais já estão disponíveis\n\n' +
+        'Acesse o servidor e confira a área de revendedores para começar.'
+      )
+      .setColor('#ffd700')
+      .setFooter({ text: `King Lovable • Pedido ${cart.id}` })
+      .setTimestamp()
+    : new EmbedBuilder()
+      .setTitle('👑 Sua key King Lovable chegou!')
+      .setDescription(
+        `**Plano:** ${plan.name}\n` +
+        `**Duração:** ${plan.durationLabel}\n\n` +
+        `**Sua key:**\n\`\`\`\n${license.key}\n\`\`\`\n` +
+        'Guarde esta mensagem em um local seguro.'
+      )
+      .setColor('#ffd700')
+      .setFooter({ text: `Pedido ${cart.id}` })
+      .setTimestamp();
 
   let deliveredByDm = true;
   try {
@@ -731,9 +848,11 @@ async function finalizeSale(interaction) {
       new EmbedBuilder()
         .setTitle('✅ Pagamento confirmado e produto entregue')
         .setDescription(
-          `${buyer}, sua key foi entregue ${deliveredByDm ? 'por mensagem privada' : 'neste carrinho'}.\n\n` +
+          `${buyer}, ${isResellerPurchase ? 'seu acesso de revendedor foi liberado' : 'sua key foi entregue'} ` +
+          `${deliveredByDm ? 'e os detalhes foram enviados por mensagem privada' : 'e os detalhes foram enviados neste carrinho'}.\n\n` +
           `Confirmado por ${interaction.user}.\n` +
-          `Cargo de cliente: ${customerRoleAdded ? '✅ Adicionado' : CONFIG.customerRoleId ? '⚠️ Não foi possível adicionar' : '➖ Não configurado'}`
+          `${isResellerPurchase ? 'Cargo de revendedor' : 'Cargo de cliente'}: ` +
+          `${purchaseRoleAdded ? '✅ Adicionado' : purchaseRoleId ? '⚠️ Não foi possível adicionar' : '➖ Não configurado'}`
         )
         .setColor('#22c55e')
         .setFooter({ text: 'O carrinho será fechado em 30 segundos.' })
@@ -744,7 +863,11 @@ async function finalizeSale(interaction) {
     '✅ Venda concluída',
     interaction.user.tag,
     `Pedido: \`${cart.id}\`\nCliente: <@${cart.userId}>\nPlano: **${plan.name}**\n` +
-      `Valor: **${formatPrice(cart.amount)}**\nKey: \`${license.key}\``,
+      `Tipo: **${isResellerPurchase ? 'Revendedor' : 'Cliente'}**\n` +
+      `Valor: **${formatPrice(cart.amount)}**\n` +
+      `${license ? `Key: \`${license.key}\`\n` : ''}` +
+      `Cargo: ${purchaseRoleAdded ? '✅ Adicionado' : '⚠️ Não adicionado'}\n` +
+      `Entrega privada: ${deliveredByDm ? '✅ Sim' : '⚠️ Enviada no carrinho'}`,
     '#22c55e'
   );
 
@@ -839,23 +962,33 @@ async function openSupportTicket(interaction) {
     components: [row]
   });
   await interaction.editReply({ content: `✅ Ticket criado: ${channel}` });
+  await sendLog(
+    '🎫 Ticket aberto',
+    interaction.user.tag,
+    `Canal: ${channel}\nUsuário: ${interaction.user}`,
+    '#ffd700'
+  );
 }
 
 async function handleButton(interaction) {
   switch (interaction.customId) {
     case 'open_ticket':
       return openSupportTicket(interaction);
+    case 'buy_reseller':
+      return createSalesCart(interaction, 'reseller_lifetime', 'reseller');
     case 'close_ticket':
       if (!isStaff(interaction.member)) {
         return interaction.reply({ content: '❌ Apenas a staff pode fechar.', ephemeral: true });
       }
       await interaction.reply({ content: '🔒 Fechando em 5 segundos...' });
+      await sendLog('🔒 Ticket fechado', interaction.user.tag, `Canal: **${interaction.channel.name}**`);
       return setTimeout(() => interaction.channel.delete().catch(() => {}), 5_000);
     case 'resolve_ticket':
       if (!isStaff(interaction.member)) {
         return interaction.reply({ content: '❌ Apenas a staff pode resolver.', ephemeral: true });
       }
       await interaction.reply({ content: '✅ Resolvido. Fechando em 10 segundos...' });
+      await sendLog('✅ Ticket resolvido', interaction.user.tag, `Canal: **${interaction.channel.name}**`, '#22c55e');
       return setTimeout(() => interaction.channel.delete().catch(() => {}), 10_000);
     case 'cart_payment': {
       const row = new ActionRowBuilder().addComponents(
@@ -885,7 +1018,7 @@ async function handleCommand(interaction) {
   }
 
   const staffCommands = new Set([
-    'painelvendas', 'pago', 'relatorio', 'deletarkey', 'ban', 'unban',
+    'painelvendas', 'painelrevendedor', 'pago', 'relatorio', 'deletarkey', 'ban', 'unban',
     'keyscliente', 'expirarkey', 'statuskey', 'limparlogs', 'fecharticket'
   ]);
   if (staffCommands.has(command) && !isStaff(interaction.member)) {
@@ -897,7 +1030,13 @@ async function handleCommand(interaction) {
 
   if (command === 'painelvendas') {
     await interaction.channel.send(panelMessagePayload());
+    await sendLog('🛒 Painel de vendas publicado', interaction.user.tag, `Canal: ${interaction.channel}`, '#ffd700');
     return interaction.reply({ content: '✅ Painel de vendas publicado.', ephemeral: true });
+  }
+  if (command === 'painelrevendedor') {
+    await interaction.channel.send(resellerPanelMessagePayload());
+    await sendLog('💼 Painel de revendedores publicado', interaction.user.tag, `Canal: ${interaction.channel}`, '#ffd700');
+    return interaction.reply({ content: '✅ Painel de revendedores publicado.', ephemeral: true });
   }
   if (command === 'pago') return finalizeSale(interaction);
 
@@ -1034,6 +1173,7 @@ async function handleCommand(interaction) {
     found.status = 'expired';
     found.expiredAt = new Date().toISOString();
     saveJson(FILES.keys, keys);
+    await sendLog('⏰ Key expirada', interaction.user.tag, `Key: \`${key}\``, '#ef4444');
     return interaction.reply({ content: '✅ Key marcada como expirada.', ephemeral: true });
   }
 
@@ -1061,6 +1201,11 @@ async function handleCommand(interaction) {
     const keys = loadJson(FILES.keys);
     const active = keys.filter((item) => item.status !== 'expired');
     saveJson(FILES.keys, active);
+    await sendLog(
+      '🧹 Keys expiradas removidas',
+      interaction.user.tag,
+      `Quantidade removida: **${keys.length - active.length}**`
+    );
     return interaction.reply({
       content: `✅ ${keys.length - active.length} key(s) expirada(s) removida(s).`,
       ephemeral: true
@@ -1070,6 +1215,7 @@ async function handleCommand(interaction) {
   if (command === 'fecharticket') {
     const isTicket = interaction.channel.name.startsWith('ticket-') ||
       interaction.channel.name.startsWith('carrinho-') ||
+      interaction.channel.name.startsWith('revendedor-') ||
       interaction.channel.name.startsWith('pago-');
     if (!isTicket) return interaction.reply({ content: '❌ Este canal não é um ticket.', ephemeral: true });
     const cart = getCartByChannel(interaction.channelId);
@@ -1081,6 +1227,11 @@ async function handleCommand(interaction) {
       });
     }
     await interaction.reply({ content: '🔒 Fechando em 5 segundos...' });
+    await sendLog(
+      '🔒 Canal fechado por comando',
+      interaction.user.tag,
+      `Canal: **${interaction.channel.name}**`
+    );
     return setTimeout(() => interaction.channel.delete().catch(() => {}), 5_000);
   }
 
@@ -1110,6 +1261,12 @@ client.on('guildMemberAdd', async (member) => {
   try {
     const role = member.guild.roles.cache.find((item) => item.name === CONFIG.memberRole);
     if (role) await member.roles.add(role);
+    await sendLog(
+      '👋 Novo membro',
+      'Sistema',
+      `Usuário: ${member}\nTag: **${member.user.tag}**\nCargo inicial: ${role ? '✅ Adicionado' : '⚠️ Não encontrado'}`,
+      '#3b82f6'
+    );
 
     if (CONFIG.welcomeChannelId) {
       const channel = await member.guild.channels.fetch(CONFIG.welcomeChannelId).catch(() => null);

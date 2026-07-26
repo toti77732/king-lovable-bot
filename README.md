@@ -16,6 +16,15 @@ O banner padrão fica em `assets/king-lovable-panel.png` e é enviado pelo
 próprio bot, sem depender de hospedagem externa. `PANEL_IMAGE_URL` continua
 opcional e, quando preenchida, substitui a imagem local.
 
+O painel de revendedores usa `assets/king-lovable-reseller-panel.png` e é
+publicado automaticamente no canal definido por `RESELLER_SALES_CHANNEL_ID`.
+Após a confirmação com `/pago`, o comprador recebe o cargo configurado em
+`RESELLER_ROLE_ID` e uma mensagem privada de boas-vindas.
+
+Os logs operacionais são enviados para `LOGS_CHANNEL_ID`, incluindo geração e
+expiração de keys, carrinhos, Pix, pagamentos, vendas, cargos, tickets,
+entrada de membros, inicialização e erros.
+
 O bot precisa das permissões `Manage Channels`, `Manage Roles`, `Send
 Messages`, `Embed Links`, `Attach Files`, `Read Message History` e `Use
 Application Commands`.
