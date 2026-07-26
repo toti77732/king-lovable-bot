@@ -44,6 +44,10 @@ const CONFIG = {
   customerRoleId: process.env.CUSTOMER_ROLE_ID || '',
   resellerRoleId: process.env.RESELLER_ROLE_ID || '1528123348905758881',
   resellerSalesChannelId: process.env.RESELLER_SALES_CHANNEL_ID || '1528217674277060709',
+  trialChannelId: process.env.TRIAL_CHANNEL_ID || '1530957669379342416',
+  trialRoleId: process.env.TRIAL_ROLE_ID || '1530957858798047352',
+  trialCategoryId: process.env.TRIAL_CATEGORY_ID || '1528136798923001998',
+  youtubeChannelUrl: process.env.YOUTUBE_CHANNEL_URL || 'https://www.youtube.com/@King-lovable',
   pixKey: process.env.PIX_KEY || '',
   pixReceiverName: process.env.PIX_RECEIVER_NAME || '',
   pixReceiverCity: process.env.PIX_RECEIVER_CITY || '',
@@ -53,6 +57,7 @@ const CONFIG = {
 
 const LOCAL_PANEL_IMAGE = path.join(__dirname, 'assets', 'king-lovable-panel.png');
 const LOCAL_RESELLER_PANEL_IMAGE = path.join(__dirname, 'assets', 'king-lovable-reseller-panel.png');
+const LOCAL_TRIAL_PANEL_IMAGE = path.join(__dirname, 'assets', 'king-lovable-trial-panel.png');
 
 const PLANS = {
   daily: { name: 'Diário', duration: '1d', durationLabel: '1 dia', price: 5.99 },
@@ -95,7 +100,8 @@ const FILES = {
   keys: path.join(CONFIG.dataDir, 'keys.json'),
   banned: path.join(CONFIG.dataDir, 'banned.json'),
   carts: path.join(CONFIG.dataDir, 'carts.json'),
-  sales: path.join(CONFIG.dataDir, 'sales.json')
+  sales: path.join(CONFIG.dataDir, 'sales.json'),
+  trials: path.join(CONFIG.dataDir, 'trials.json')
 };
 
 function loadJson(file, fallback = []) {
@@ -259,6 +265,59 @@ function updateCart(channelId, changes) {
   return carts[index];
 }
 
+const trialRoleTimers = new Map();
+
+function getTrialByChannel(channelId) {
+  return loadJson(FILES.trials).find((trial) => trial.channelId === channelId);
+}
+
+function updateTrial(trialId, changes) {
+  const trials = loadJson(FILES.trials);
+  const index = trials.findIndex((trial) => trial.id === trialId);
+  if (index === -1) return null;
+  trials[index] = { ...trials[index], ...changes, updatedAt: new Date().toISOString() };
+  saveJson(FILES.trials, trials);
+  return trials[index];
+}
+
+async function removeTrialRole(guild, trial) {
+  try {
+    const member = await guild.members.fetch(trial.userId);
+    await member.roles.remove(CONFIG.trialRoleId, `Teste encerrado • ${trial.id}`);
+  } catch (error) {
+    console.error(`Não foi possível remover o cargo de teste de ${trial.userTag}:`, error.message);
+  }
+  updateTrial(trial.id, { roleRemoved: true, roleRemovedAt: new Date().toISOString() });
+  trialRoleTimers.delete(trial.id);
+  await sendLog(
+    '⏰ Teste encerrado',
+    'Sistema',
+    `Usuário: <@${trial.userId}>\nSolicitação: \`${trial.id}\`\nCargo temporário removido.`,
+    '#f59e0b'
+  );
+}
+
+function scheduleTrialRoleRemoval(guild, trial) {
+  if (!trial.roleExpiresAt || trial.roleRemoved) return;
+  const existing = trialRoleTimers.get(trial.id);
+  if (existing) clearTimeout(existing);
+
+  const delay = new Date(trial.roleExpiresAt).getTime() - Date.now();
+  if (delay <= 0) {
+    removeTrialRole(guild, trial).catch(() => {});
+    return;
+  }
+  const timer = setTimeout(() => removeTrialRole(guild, trial).catch(() => {}), delay);
+  trialRoleTimers.set(trial.id, timer);
+}
+
+async function restoreTrialRoleTimers(guild) {
+  const trials = loadJson(FILES.trials).filter(
+    (trial) => trial.status === 'approved' && !trial.roleRemoved && trial.roleExpiresAt
+  );
+  for (const trial of trials) scheduleTrialRoleRemoval(guild, trial);
+}
+
 function panelEmbed() {
   const embed = new EmbedBuilder()
     .setColor('#ffd700')
@@ -310,6 +369,49 @@ function resellerPanelMessagePayload() {
     payload.files = [
       new AttachmentBuilder(LOCAL_RESELLER_PANEL_IMAGE, {
         name: 'king-lovable-reseller-panel.png'
+      })
+    ];
+  }
+  return payload;
+}
+
+function trialPanelMessagePayload() {
+  const embed = new EmbedBuilder()
+    .setColor('#ffd700')
+    .setDescription(
+      'Escolha qualquer vídeo do canal, siga as instruções da campanha e envie o print em um ticket privado.\n\n' +
+      '• Uma key por usuário\n' +
+      '• Conta do Discord com pelo menos 7 dias\n' +
+      '• Aprovação manual da equipe\n' +
+      '• Key válida por 1 hora'
+    )
+    .setFooter({ text: 'King Lovable • Teste gratuito sujeito à aprovação' });
+
+  if (fs.existsSync(LOCAL_TRIAL_PANEL_IMAGE)) {
+    embed.setImage('attachment://king-lovable-trial-panel.png');
+  }
+
+  const payload = {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Acessar canal no YouTube')
+          .setEmoji('▶️')
+          .setStyle(ButtonStyle.Link)
+          .setURL(CONFIG.youtubeChannelUrl),
+        new ButtonBuilder()
+          .setCustomId('request_trial')
+          .setLabel('Solicitar key de 1 hora')
+          .setEmoji('🧪')
+          .setStyle(ButtonStyle.Success)
+      )
+    ]
+  };
+  if (fs.existsSync(LOCAL_TRIAL_PANEL_IMAGE)) {
+    payload.files = [
+      new AttachmentBuilder(LOCAL_TRIAL_PANEL_IMAGE, {
+        name: 'king-lovable-trial-panel.png'
       })
     ];
   }
@@ -382,6 +484,10 @@ const commandDefinitions = [
   {
     name: 'painelrevendedor',
     description: '💼 Publicar o painel de revendedores neste canal (Staff)'
+  },
+  {
+    name: 'painelteste',
+    description: '🧪 Publicar o painel de teste gratuito neste canal (Staff)'
   },
   {
     name: 'pago',
@@ -508,6 +614,31 @@ async function ensureResellerPanel() {
   }
 }
 
+async function ensureTrialPanel() {
+  if (!CONFIG.trialChannelId) return;
+  const channel = await client.channels.fetch(CONFIG.trialChannelId).catch(() => null);
+  if (!channel?.isTextBased()) {
+    throw new Error('Canal de teste gratuito não encontrado ou sem acesso.');
+  }
+
+  const messages = await channel.messages.fetch({ limit: 30 });
+  const exists = messages.some(
+    (message) => message.author.id === client.user.id &&
+      message.components.some((row) =>
+        row.components.some((item) => item.customId === 'request_trial')
+      )
+  );
+  if (!exists) {
+    await channel.send(trialPanelMessagePayload());
+    await sendLog(
+      '🧪 Painel de teste publicado',
+      'Sistema',
+      `Canal: <#${channel.id}>\nYouTube: ${CONFIG.youtubeChannelUrl}`,
+      '#ffd700'
+    );
+  }
+}
+
 client.once('clientReady', async () => {
   console.log(`🤖 ${client.user.tag} online.`);
   const guild = await client.guilds.fetch(CONFIG.guildId).catch(() => null);
@@ -519,6 +650,8 @@ client.once('clientReady', async () => {
   await guild.commands.set(commandDefinitions);
   await ensureSupportPanel().catch((error) => console.error('Painel de suporte:', error.message));
   await ensureResellerPanel().catch((error) => console.error('Painel de revendedores:', error.message));
+  await ensureTrialPanel().catch((error) => console.error('Painel de teste:', error.message));
+  await restoreTrialRoleTimers(guild);
   await sendLog(
     '🟢 Bot iniciado',
     'Sistema',
@@ -970,12 +1103,307 @@ async function openSupportTicket(interaction) {
   );
 }
 
+async function requestTrial(interaction) {
+  const minimumAgeMs = 7 * 24 * 60 * 60 * 1000;
+  const accountAgeMs = Date.now() - interaction.user.createdTimestamp;
+  if (accountAgeMs < minimumAgeMs) {
+    const availableAt = Math.floor((interaction.user.createdTimestamp + minimumAgeMs) / 1000);
+    return interaction.reply({
+      content: `❌ Sua conta do Discord precisa ter pelo menos 7 dias. Tente novamente <t:${availableAt}:R>.`,
+      ephemeral: true
+    });
+  }
+
+  const trials = loadJson(FILES.trials);
+  const approved = trials.find(
+    (trial) => trial.userId === interaction.user.id && trial.status === 'approved'
+  );
+  if (approved) {
+    return interaction.reply({
+      content: '❌ Você já recebeu uma key de teste anteriormente. Cada usuário pode receber apenas uma.',
+      ephemeral: true
+    });
+  }
+
+  const pending = trials.find(
+    (trial) => trial.userId === interaction.user.id && trial.status === 'pending'
+  );
+  if (pending) {
+    const pendingChannel = interaction.guild.channels.cache.get(pending.channelId);
+    if (pendingChannel) {
+      return interaction.reply({
+        content: `🧪 Você já possui uma solicitação aberta: ${pendingChannel}`,
+        ephemeral: true
+      });
+    }
+    updateTrial(pending.id, { status: 'cancelled', cancelReason: 'channel_missing' });
+  }
+
+  if (!CONFIG.trialCategoryId) {
+    return interaction.reply({
+      content: '❌ A categoria dos testes ainda não foi configurada.',
+      ephemeral: true
+    });
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  const staffRole = interaction.guild.roles.cache.find((role) => role.name === CONFIG.staffRole);
+  const overwrites = [
+    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+    {
+      id: interaction.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.AttachFiles,
+        PermissionFlagsBits.EmbedLinks
+      ]
+    },
+    {
+      id: client.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    }
+  ];
+  if (staffRole) {
+    overwrites.push({
+      id: staffRole.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory
+      ]
+    });
+  }
+
+  const channel = await interaction.guild.channels.create({
+    name: `teste-${safeChannelName(interaction.user.username)}`,
+    type: ChannelType.GuildText,
+    parent: CONFIG.trialCategoryId,
+    permissionOverwrites: overwrites,
+    topic: `Teste King Lovable • Usuário: ${interaction.user.id}`
+  });
+
+  const trial = {
+    id: `TRIAL${Date.now()}`,
+    userId: interaction.user.id,
+    userTag: interaction.user.tag,
+    channelId: channel.id,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const updatedTrials = loadJson(FILES.trials);
+  updatedTrials.unshift(trial);
+  saveJson(FILES.trials, updatedTrials);
+
+  const buttons = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('trial_approve')
+      .setLabel('Aprovar teste')
+      .setEmoji('✅')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('trial_reject')
+      .setLabel('Recusar')
+      .setEmoji('❌')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await channel.send({
+    content: `${interaction.user}${staffRole ? ` ${staffRole}` : ''}`,
+    embeds: [
+      new EmbedBuilder()
+        .setTitle('🧪 Solicitação de key de teste')
+        .setDescription(
+          `${interaction.user}, envie seu print neste canal.\n\n` +
+          'A equipe verificará o comprovante e usará os botões abaixo.\n' +
+          'Se aprovado, você receberá uma key válida por **1 hora** no privado.'
+        )
+        .addFields(
+          { name: 'Usuário', value: interaction.user.tag, inline: true },
+          { name: 'Conta criada', value: `<t:${Math.floor(interaction.user.createdTimestamp / 1000)}:D>`, inline: true }
+        )
+        .setColor('#ffd700')
+        .setFooter({ text: `Solicitação ${trial.id}` })
+    ],
+    components: [buttons],
+    allowedMentions: staffRole
+      ? { users: [interaction.user.id], roles: [staffRole.id] }
+      : { users: [interaction.user.id] }
+  });
+
+  await interaction.editReply({ content: `✅ Seu ticket de teste foi criado: ${channel}` });
+  await sendLog(
+    '🧪 Teste solicitado',
+    interaction.user.tag,
+    `Solicitação: \`${trial.id}\`\nUsuário: ${interaction.user}\nCanal: ${channel}`,
+    '#ffd700'
+  );
+}
+
+async function approveTrial(interaction) {
+  if (!isStaff(interaction.member)) {
+    return interaction.reply({ content: '❌ Apenas a staff pode aprovar testes.', ephemeral: true });
+  }
+  const trial = getTrialByChannel(interaction.channelId);
+  if (!trial) return interaction.reply({ content: '❌ Solicitação não encontrada.', ephemeral: true });
+  if (trial.status !== 'pending') {
+    return interaction.reply({ content: 'ℹ️ Esta solicitação já foi analisada.', ephemeral: true });
+  }
+
+  await interaction.deferReply();
+  const key = generateKey('1h');
+  const keys = loadJson(FILES.keys);
+  keys.unshift({
+    key,
+    plan: 'trial',
+    client: trial.userTag,
+    clientId: trial.userId,
+    revendedor: interaction.user.tag,
+    duration: '1 hora',
+    durationCode: '1h',
+    created: new Date().toISOString(),
+    status: 'active',
+    trialId: trial.id
+  });
+  saveJson(FILES.keys, keys);
+
+  let roleAdded = false;
+  try {
+    const member = await interaction.guild.members.fetch(trial.userId);
+    await member.roles.add(CONFIG.trialRoleId, `Teste aprovado • ${trial.id}`);
+    roleAdded = true;
+  } catch (error) {
+    await sendLog(
+      '⚠️ Cargo de teste não adicionado',
+      interaction.user.tag,
+      `Usuário: <@${trial.userId}>\nErro: \`${error.message}\``,
+      '#f59e0b'
+    );
+  }
+
+  const approvedAt = new Date();
+  const roleExpiresAt = new Date(approvedAt.getTime() + 60 * 60 * 1000);
+  const approvedTrial = updateTrial(trial.id, {
+    status: 'approved',
+    key,
+    approvedById: interaction.user.id,
+    approvedByTag: interaction.user.tag,
+    approvedAt: approvedAt.toISOString(),
+    roleExpiresAt: roleExpiresAt.toISOString(),
+    roleRemoved: !roleAdded
+  });
+
+  const user = await client.users.fetch(trial.userId);
+  const deliveryEmbed = new EmbedBuilder()
+    .setTitle('🧪 Seu teste King Lovable foi aprovado!')
+    .setDescription(
+      `Sua key de teste é válida por **1 hora**.\n\n` +
+      `\`\`\`\n${key}\n\`\`\`\n` +
+      'Aproveite para testar os recursos da extensão. Cada usuário pode receber apenas uma key gratuita.'
+    )
+    .setColor('#ffd700')
+    .setFooter({ text: `King Lovable • ${trial.id}` })
+    .setTimestamp();
+
+  let deliveredByDm = true;
+  try {
+    await user.send({ embeds: [deliveryEmbed] });
+  } catch {
+    deliveredByDm = false;
+    await interaction.channel.send({ content: `${user}`, embeds: [deliveryEmbed] });
+  }
+
+  await interaction.message.edit({ components: [] }).catch(() => {});
+  await interaction.editReply({
+    embeds: [
+      new EmbedBuilder()
+        .setTitle('✅ Teste aprovado e entregue')
+        .setDescription(
+          `Usuário: ${user}\n` +
+          `Key: \`${key}\`\n` +
+          `Cargo: ${roleAdded ? '✅ Adicionado por 1 hora' : '⚠️ Não adicionado'}\n` +
+          `Entrega privada: ${deliveredByDm ? '✅ Sim' : '⚠️ Entregue neste ticket'}`
+        )
+        .setColor('#22c55e')
+        .setFooter({ text: 'O ticket será fechado em 30 segundos.' })
+    ]
+  });
+
+  await sendLog(
+    '✅ Teste aprovado',
+    interaction.user.tag,
+    `Solicitação: \`${trial.id}\`\nUsuário: <@${trial.userId}>\nKey: \`${key}\`\n` +
+      `Cargo: ${roleAdded ? '✅ Adicionado' : '⚠️ Não adicionado'}\n` +
+      `Expira: <t:${Math.floor(roleExpiresAt.getTime() / 1000)}:R>`,
+    '#22c55e'
+  );
+
+  if (approvedTrial && roleAdded) scheduleTrialRoleRemoval(interaction.guild, approvedTrial);
+  await interaction.channel.setName(`teste-aprovado-${safeChannelName(trial.userTag)}`).catch(() => {});
+  setTimeout(() => interaction.channel.delete().catch(() => {}), 30_000);
+}
+
+async function rejectTrial(interaction) {
+  if (!isStaff(interaction.member)) {
+    return interaction.reply({ content: '❌ Apenas a staff pode recusar testes.', ephemeral: true });
+  }
+  const trial = getTrialByChannel(interaction.channelId);
+  if (!trial) return interaction.reply({ content: '❌ Solicitação não encontrada.', ephemeral: true });
+  if (trial.status !== 'pending') {
+    return interaction.reply({ content: 'ℹ️ Esta solicitação já foi analisada.', ephemeral: true });
+  }
+
+  updateTrial(trial.id, {
+    status: 'rejected',
+    rejectedById: interaction.user.id,
+    rejectedByTag: interaction.user.tag,
+    rejectedAt: new Date().toISOString()
+  });
+  const user = await client.users.fetch(trial.userId).catch(() => null);
+  if (user) {
+    await user.send({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('❌ Solicitação de teste não aprovada')
+          .setDescription(
+            'Não foi possível aprovar o comprovante enviado. Você pode revisar as instruções e fazer uma nova solicitação.'
+          )
+          .setColor('#ef4444')
+          .setFooter({ text: 'King Lovable • Teste gratuito' })
+      ]
+    }).catch(() => {});
+  }
+
+  await interaction.message.edit({ components: [] }).catch(() => {});
+  await interaction.reply({ content: '❌ Solicitação recusada. O ticket será fechado em 15 segundos.' });
+  await sendLog(
+    '❌ Teste recusado',
+    interaction.user.tag,
+    `Solicitação: \`${trial.id}\`\nUsuário: <@${trial.userId}>`,
+    '#ef4444'
+  );
+  setTimeout(() => interaction.channel.delete().catch(() => {}), 15_000);
+}
+
 async function handleButton(interaction) {
   switch (interaction.customId) {
     case 'open_ticket':
       return openSupportTicket(interaction);
     case 'buy_reseller':
       return createSalesCart(interaction, 'reseller_lifetime', 'reseller');
+    case 'request_trial':
+      return requestTrial(interaction);
+    case 'trial_approve':
+      return approveTrial(interaction);
+    case 'trial_reject':
+      return rejectTrial(interaction);
     case 'close_ticket':
       if (!isStaff(interaction.member)) {
         return interaction.reply({ content: '❌ Apenas a staff pode fechar.', ephemeral: true });
@@ -1018,7 +1446,7 @@ async function handleCommand(interaction) {
   }
 
   const staffCommands = new Set([
-    'painelvendas', 'painelrevendedor', 'pago', 'relatorio', 'deletarkey', 'ban', 'unban',
+    'painelvendas', 'painelrevendedor', 'painelteste', 'pago', 'relatorio', 'deletarkey', 'ban', 'unban',
     'keyscliente', 'expirarkey', 'statuskey', 'limparlogs', 'fecharticket'
   ]);
   if (staffCommands.has(command) && !isStaff(interaction.member)) {
@@ -1029,14 +1457,22 @@ async function handleCommand(interaction) {
   }
 
   if (command === 'painelvendas') {
+    await interaction.deferReply({ ephemeral: true });
     await interaction.channel.send(panelMessagePayload());
     await sendLog('🛒 Painel de vendas publicado', interaction.user.tag, `Canal: ${interaction.channel}`, '#ffd700');
-    return interaction.reply({ content: '✅ Painel de vendas publicado.', ephemeral: true });
+    return interaction.editReply({ content: '✅ Painel de vendas publicado.' });
   }
   if (command === 'painelrevendedor') {
+    await interaction.deferReply({ ephemeral: true });
     await interaction.channel.send(resellerPanelMessagePayload());
     await sendLog('💼 Painel de revendedores publicado', interaction.user.tag, `Canal: ${interaction.channel}`, '#ffd700');
-    return interaction.reply({ content: '✅ Painel de revendedores publicado.', ephemeral: true });
+    return interaction.editReply({ content: '✅ Painel de revendedores publicado.' });
+  }
+  if (command === 'painelteste') {
+    await interaction.deferReply({ ephemeral: true });
+    await interaction.channel.send(trialPanelMessagePayload());
+    await sendLog('🧪 Painel de teste publicado', interaction.user.tag, `Canal: ${interaction.channel}`, '#ffd700');
+    return interaction.editReply({ content: '✅ Painel de teste gratuito publicado.' });
   }
   if (command === 'pago') return finalizeSale(interaction);
 
@@ -1216,11 +1652,20 @@ async function handleCommand(interaction) {
     const isTicket = interaction.channel.name.startsWith('ticket-') ||
       interaction.channel.name.startsWith('carrinho-') ||
       interaction.channel.name.startsWith('revendedor-') ||
+      interaction.channel.name.startsWith('teste-') ||
       interaction.channel.name.startsWith('pago-');
     if (!isTicket) return interaction.reply({ content: '❌ Este canal não é um ticket.', ephemeral: true });
     const cart = getCartByChannel(interaction.channelId);
     if (cart && cart.status !== 'paid') {
       updateCart(interaction.channelId, {
+        status: 'cancelled',
+        cancelledBy: interaction.user.id,
+        cancelledAt: new Date().toISOString()
+      });
+    }
+    const trial = getTrialByChannel(interaction.channelId);
+    if (trial && trial.status === 'pending') {
+      updateTrial(trial.id, {
         status: 'cancelled',
         cancelledBy: interaction.user.id,
         cancelledAt: new Date().toISOString()

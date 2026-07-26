@@ -1,6 +1,6 @@
 {
   "name": "king-lovable-bot",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "description": "Bot de vendas, suporte e gerenciamento de licenças King Lovable",
   "main": "bot.js",
   "scripts": {

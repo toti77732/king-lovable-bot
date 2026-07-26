@@ -25,6 +25,21 @@ Os logs operacionais são enviados para `LOGS_CHANNEL_ID`, incluindo geração e
 expiração de keys, carrinhos, Pix, pagamentos, vendas, cargos, tickets,
 entrada de membros, inicialização e erros.
 
+## Teste gratuito
+
+O painel de teste usa `assets/king-lovable-trial-panel.png` e é publicado
+automaticamente em `TRIAL_CHANNEL_ID`. O usuário abre um ticket privado, envia
+o print e aguarda a equipe usar os botões **Aprovar teste** ou **Recusar**.
+
+Ao aprovar, o bot:
+
+- gera uma key de 1 hora;
+- envia a key no privado;
+- adiciona temporariamente o cargo definido em `TRIAL_ROLE_ID`;
+- registra a aprovação em `trials.json`;
+- impede outra key aprovada para o mesmo Discord ID;
+- remove o cargo depois de 1 hora, mesmo após reinicialização do bot.
+
 O bot precisa das permissões `Manage Channels`, `Manage Roles`, `Send
 Messages`, `Embed Links`, `Attach Files`, `Read Message History` e `Use
 Application Commands`.
