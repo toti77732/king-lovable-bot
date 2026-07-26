@@ -49,6 +49,8 @@ const CONFIG = {
   dataDir: process.env.DATA_DIR || path.join(__dirname, 'data')
 };
 
+const LOCAL_PANEL_IMAGE = path.join(__dirname, 'assets', 'king-lovable-panel.png');
+
 const PLANS = {
   daily: { name: 'Diário', emoji: '🟢', duration: '1d', durationLabel: '1 dia', price: 5.99 },
   weekly: { name: 'Semanal', emoji: '🔵', duration: '7d', durationLabel: '7 dias', price: 14.99 },
@@ -244,30 +246,36 @@ function updateCart(channelId, changes) {
 }
 
 function panelEmbed() {
-  const description = Object.values(PLANS)
-    .map((plan) => `${plan.emoji} **${plan.name}** — ${formatPrice(plan.price)} • ${plan.durationLabel}`)
-    .join('\n');
-
   const embed = new EmbedBuilder()
-    .setAuthor({ name: 'King Lovable' })
-    .setTitle('⚡ Entrega após confirmação!')
-    .setDescription(
-      'Escolha um dos planos King Lovable e crie seu carrinho privado.\n\n' +
-      `${description}\n\n` +
-      '🔒 Pagamento via Pix com atendimento privado.'
-    )
     .setColor('#ffd700')
-    .setFooter({ text: 'King Lovable • Selecione um plano abaixo' });
+    .setFooter({ text: 'King Lovable • Selecione seu plano no menu abaixo' });
 
-  if (CONFIG.panelImageUrl) embed.setImage(CONFIG.panelImageUrl);
+  if (CONFIG.panelImageUrl) {
+    embed.setImage(CONFIG.panelImageUrl);
+  } else if (fs.existsSync(LOCAL_PANEL_IMAGE)) {
+    embed.setImage('attachment://king-lovable-panel.png');
+  }
   return embed;
+}
+
+function panelMessagePayload() {
+  const payload = {
+    embeds: [panelEmbed()],
+    components: [planSelectRow()]
+  };
+  if (!CONFIG.panelImageUrl && fs.existsSync(LOCAL_PANEL_IMAGE)) {
+    payload.files = [
+      new AttachmentBuilder(LOCAL_PANEL_IMAGE, { name: 'king-lovable-panel.png' })
+    ];
+  }
+  return payload;
 }
 
 function planSelectRow() {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId('sales_plan_select')
-      .setPlaceholder('Clique aqui para ver os planos')
+      .setPlaceholder('Clique aqui para ver as opções')
       .addOptions(
         Object.entries(PLANS).map(([value, plan]) => ({
           label: `King Lovable ${plan.name}`,
@@ -888,7 +896,7 @@ async function handleCommand(interaction) {
   }
 
   if (command === 'painelvendas') {
-    await interaction.channel.send({ embeds: [panelEmbed()], components: [planSelectRow()] });
+    await interaction.channel.send(panelMessagePayload());
     return interaction.reply({ content: '✅ Painel de vendas publicado.', ephemeral: true });
   }
   if (command === 'pago') return finalizeSale(interaction);

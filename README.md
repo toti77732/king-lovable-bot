@@ -12,6 +12,10 @@ com `/pago`, e o bot gera e entrega a licença.
 4. Defina `DATA_DIR=/data`.
 5. Faça o deploy e use `/painelvendas` no canal de vendas.
 
+O banner padrão fica em `assets/king-lovable-panel.png` e é enviado pelo
+próprio bot, sem depender de hospedagem externa. `PANEL_IMAGE_URL` continua
+opcional e, quando preenchida, substitui a imagem local.
+
 O bot precisa das permissões `Manage Channels`, `Manage Roles`, `Send
 Messages`, `Embed Links`, `Attach Files`, `Read Message History` e `Use
 Application Commands`.
