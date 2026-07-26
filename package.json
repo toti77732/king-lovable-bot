@@ -1,10 +1,17 @@
 {
   "name": "king-lovable-bot",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "Bot de vendas, suporte e gerenciamento de licenças King Lovable",
+  "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "check": "node --check bot.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.21.0",
+    "qrcode": "^1.5.4"
   }
 }
