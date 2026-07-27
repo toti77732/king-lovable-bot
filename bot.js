@@ -805,6 +805,11 @@ async function showPixPayment(interaction) {
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
+      .setCustomId('cart_copy_pix')
+      .setLabel('Copiar código Pix')
+      .setEmoji('📋')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
       .setCustomId('cart_paid_notice')
       .setLabel('Já paguei')
       .setEmoji('✅')
@@ -822,6 +827,33 @@ async function showPixPayment(interaction) {
     `Pedido: \`${cart.id}\`\nProduto: **${plan.name}**\nValor: **${formatPrice(cart.amount)}**\nCanal: ${interaction.channel}`,
     '#22c55e'
   );
+}
+
+async function showPixCopyCode(interaction) {
+  const cart = getCartByChannel(interaction.channelId);
+  if (!cart) {
+    return interaction.reply({ content: '❌ Carrinho não encontrado.', ephemeral: true });
+  }
+  if (interaction.user.id !== cart.userId) {
+    return interaction.reply({ content: '❌ Este carrinho pertence a outro cliente.', ephemeral: true });
+  }
+  if (!CONFIG.pixKey || !CONFIG.pixReceiverName || !CONFIG.pixReceiverCity) {
+    return interaction.reply({ content: '❌ O Pix ainda não foi configurado.', ephemeral: true });
+  }
+
+  const txid = cart.id.replace(/[^A-Z0-9]/gi, '').slice(0, 25);
+  const payload = createPixPayload({
+    key: CONFIG.pixKey,
+    name: CONFIG.pixReceiverName,
+    city: CONFIG.pixReceiverCity,
+    amount: cart.amount,
+    txid
+  });
+
+  return interaction.reply({
+    content: `📋 **Código Pix copia e cola:**\n\`\`\`\n${payload}\n\`\`\`\nSelecione o código acima e use a opção **Copiar**.`,
+    ephemeral: true
+  });
 }
 
 async function notifyPaid(interaction) {
@@ -1427,6 +1459,8 @@ async function handleButton(interaction) {
     }
     case 'cart_pix':
       return showPixPayment(interaction);
+    case 'cart_copy_pix':
+      return showPixCopyCode(interaction);
     case 'cart_back':
       return interaction.update({ content: 'Operação cancelada.', components: [] });
     case 'cart_paid_notice':
